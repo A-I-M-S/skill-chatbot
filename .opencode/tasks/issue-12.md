@@ -32,6 +32,18 @@ Make the running system safe to leave alone for a week.
 - The existing wa-bridge `src/socket.ts` and `src/sender.ts` from #2 — extend, don't replace.
 - The existing `orchestrator/src/state.py` from #3 — extend, don't replace.
 
+## ⚠️ File-access boundary (HARD)
+
+You have **read access to the project and to `references/upstream/`.** You do **NOT** need to read or grep from the live skill paths (`/root/.openclaw/skills/rag-qdrant/`, `/root/.openclaw/workspace/admin/skills/farm-tour-booking/`). Those are auto-rejected and trying to read them will abort your work.
+
+**If a question is answered by `references/upstream/rag-qdrant-SKILL.md` or `references/upstream/rag-qdrant-README.md`, use those.** Do not "verify" against the live skills.
+
+## ⚠️ Out-of-scope (do not attempt)
+
+- **Do not start a real Baileys session** — mock it.
+- **Do not connect to a real Qdrant** — mock `rag_qdrant.ingest_text` / `ask` if you need to test integration points.
+- **Do not run `systemctl`** — only write the unit files.
+
 ## Hard constraints
 
 - **Do not modify any feature-flow code** (`flows/`, `router.py`, `prompts/`). This issue is plumbing only.

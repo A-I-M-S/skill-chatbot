@@ -29,6 +29,12 @@ Turn the two dev commands into managed services that survive reboots and don't f
 - The existing `Makefile` from #1 — extend, don't replace.
 - The existing `SKILL.md` — extend the status section.
 
+## ⚠️ File-access boundary (HARD)
+
+You have **read access to the project and to `references/upstream/`.** You do **NOT** need to read or grep from the live skill paths (`/root/.openclaw/skills/rag-qdrant/`, `/root/.openclaw/workspace/admin/skills/farm-tour-booking/`). Those are auto-rejected and trying to read them will abort your work.
+
+**If a question is answered by `references/upstream/...`, use those.** Do not "verify" against the live skills.
+
 ## Hard constraints
 
 - **Do not modify the source code under `wa-bridge/src/` or `orchestrator/src/`.**

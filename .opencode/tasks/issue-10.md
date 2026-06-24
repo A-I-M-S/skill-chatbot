@@ -29,8 +29,19 @@ Receive images from customers, ack them, store them, and let the LLM answer ques
 
 - Plan §1 layout (`wa-bridge/src/image.ts`, `wa-bridge/src/inbox.ts` extension, `orchestrator/src/state.py` extension, `orchestrator/src/rag.py` extension), §2 tech choices, §3 Makefile targets.
 - The NDJSON contract from issues #2 + #3 (already documented at the top of `orchestrator/src/main.py`).
-- `references/upstream/rag-qdrant-SKILL.md` (photo support section).
+- `references/upstream/rag-qdrant-SKILL.md` (photo support section — sections on `Photo` / `photo_store.py` / `photo_matching.py`).
 - `.env.example`: `RAG_PHOTOS_DIR` (default `/root/rag-photos`).
+
+## ⚠️ File-access boundary (HARD)
+
+You have **read access to the project and to `references/upstream/`.** You do **NOT** need to read or grep from the live skill paths (`/root/.openclaw/skills/rag-qdrant/`, `/root/.openclaw/workspace/admin/skills/farm-tour-booking/`). Those are auto-rejected and trying to read them will abort your work.
+
+**If a question is answered by `references/upstream/rag-qdrant-SKILL.md` or `references/upstream/rag-qdrant-README.md`, use those.** Do not "verify" against the live skills. The snapshots are authoritative.
+
+## ⚠️ Out-of-scope (do not attempt)
+
+- **Do not try to do a real ingest of the test image** — just call the helper function. No Qdrant credentials are available in this environment.
+- **Do not start a real Baileys session** — mock it.
 
 ## Hard constraints
 
