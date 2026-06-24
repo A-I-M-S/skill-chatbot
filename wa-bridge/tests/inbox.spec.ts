@@ -61,7 +61,7 @@ describe("buildInboxLine", () => {
       msg: makeMsg({ message: { imageMessage: { caption: "look at this", mimetype: "image/jpeg" } } }),
     });
     expect(line.text).toBe("look at this");
-    expect(line.image).toEqual({ path: "", sha256: "", filename: "image.jpg" });
+    expect(line.image).toEqual({ path: "", sha256: "", filename: "inbound.jpg" });
   });
 
   it("image is null when there is no image", () => {

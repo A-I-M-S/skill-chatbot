@@ -107,6 +107,53 @@ Always print **one JSON line on stdout** for scripts, plus optional human logs o
 - `inference_429` — LLM rate-limited; the orchestrator retries with backoff and tells the user briefly
 - `qdrant_unreachable` — orchestrator falls back to "I'll have the team reach out" and notifies admins
 
+## Image handling (issue #10)
+
+Inbound WhatsApp **images** are saved to disk and acked; if the image has a caption that looks like a question, the caption is routed to the LLM with the photo path prepended.
+
+### Where images live
+
+`<RAG_PHOTOS_DIR>/inbound/<sha256[:16]>.<ext>` — content-addressed, dedupes automatically (same bytes = same file). `RAG_PHOTOS_DIR` defaults to `/root/rag-photos` (shared with `rag-qdrant`). There is **no rotation** in v1; plan risk #12 calls out a weekly prune job to add later.
+
+### Pipeline
+
+1. **wa-bridge** (`src/image.ts` + `socket.ts`): detects an `imageMessage`, downloads the bytes via Baileys (`downloadMediaMessage`), writes them to `<RAG_PHOTOS_DIR>/inbound/<sha>.<ext>`, and appends an NDJSON line `{message_id, from, text, image: {path, sha256, filename}, timestamp}` to the inbox.
+2. **Rate limit**: `MAX_IMAGE_BYTES` (default **10 MiB**) is checked twice — first against the declared `fileLength` in the `imageMessage`, then against the actual byte length after download. Oversize images are silently dropped: the NDJSON line is still written (so the caption / message body is preserved) but `image` is `null` and a `onImageRejected` hook fires.
+3. **orchestrator** (`src/image_handler.py`): when an inbox line carries an image, the orchestrator saves the metadata to `state.last_image` (new SQLite table keyed by sender phone, upsert on conflict) and replies with a short ack in the customer's language:
+   - English caption / no caption → `Got the photo.`
+   - Chinese caption → `收到图片了。`
+4. **Caption routing**: if the caption looks like a question (ends in `?` / `？`, or starts with a WH-word in EN/ZH), the photo path is prepended to the user message and the router calls `rag.ask_with_photo(question, photo_path)`. Non-question captions (e.g. `"see this"`) → ack only, no RAG call.
+5. **No real Qdrant ingest at the orchestrator level** — the bridge has already saved the file. The `rag-qdrant` photo path (via the `Photo` / `ingest_photo` API) is the source of truth for embedding descriptions; #10 just hands the photo context to the router and lets the existing photo corpus search do the work. v1 is best-effort because we have no multimodal model by default.
+
+### NDJSON contract (v1, image field)
+
+```json
+{
+  "message_id": "ABC123",
+  "from": "6591234567",
+  "text": "what is this?",
+  "image": {
+    "path": "/root/rag-photos/inbound/5c6fb3dfe09f.jpg",
+    "sha256": "5c6fb3dfe09f...",
+    "filename": "inbound.jpg"
+  },
+  "timestamp": "2026-06-24T10:00:00Z"
+}
+```
+
+`image` is `null` when the inbound had no image, or when the image was dropped for being oversize.
+
+### Supported image types
+
+`.jpg`, `.jpeg`, `.png`, `.webp`, `.gif`, `.bmp`, `.tiff`, `.heic`, `.heif`. (Mirrors the `rag-qdrant` photo-support section in `references/upstream/rag-qdrant-SKILL.md`.)
+
+### Operational notes
+
+- **Disk growth**: there is no rotation script yet — see plan risk #12. Until that's added, manually `find /root/rag-photos/inbound -mtime +30 -delete` if needed.
+- **Inbound + LLM**: the orchestrator never *ingests* the photo into Qdrant. Only the description (the caption) is vectorised by `rag-qdrant.ask` via the existing photo corpus search.
+- **Bridge outage during image**: if the bridge is down, the WhatsApp message will simply be re-delivered by WhatsApp once the bridge reconnects; no special handling.
+- **Tests**: vitest covers image download, dedupe, oversize rejection (declared + actual), and the full socket → inbox integration. Pytest covers image-only ack, image+question caption routing, image+non-question ack-only, and the bridge-dropped-oversize path. Real Baileys and Qdrant are never hit — both are mocked.
+
 ## Escalation to Boon
 
 - WhatsApp session cannot be re-authed (number banned, hardware lost)

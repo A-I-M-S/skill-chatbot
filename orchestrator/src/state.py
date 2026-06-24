@@ -12,11 +12,15 @@ Public surface:
 - :func:`open_state` — context manager used by ``main.py``.
 - :class:`StateLockedError` — raised when another orchestrator holds the lock.
 
-Schema (v0):
+Schema:
 
 - ``processed_messages(message_id TEXT PRIMARY KEY, processed_at REAL NOT NULL)``
+- ``last_image(sender TEXT PRIMARY KEY, message_id TEXT NOT NULL, path TEXT NOT NULL,
+  sha256 TEXT NOT NULL, filename TEXT NOT NULL, saved_at REAL NOT NULL)``
 
-That table is the dedupe boundary for v0 (full idempotency lands in issue #12).
+``processed_messages`` is the dedupe boundary for v0 (full idempotency lands in
+issue #12). ``last_image`` records the most recent inbound image per phone, used
+by issue #10's caption routing.
 """
 
 from __future__ import annotations
@@ -37,6 +41,14 @@ SCHEMA = """
 CREATE TABLE IF NOT EXISTS processed_messages (
     message_id    TEXT PRIMARY KEY,
     processed_at  REAL NOT NULL
+);
+CREATE TABLE IF NOT EXISTS last_image (
+    sender      TEXT PRIMARY KEY,
+    message_id  TEXT NOT NULL,
+    path        TEXT NOT NULL,
+    sha256      TEXT NOT NULL,
+    filename    TEXT NOT NULL,
+    saved_at    REAL NOT NULL
 );
 """
 
@@ -133,6 +145,51 @@ class State:
         assert self._conn is not None
         self._conn.execute("SELECT 1").fetchone()
         return "ok"
+
+    def set_last_image(
+        self,
+        sender: str,
+        message_id: str,
+        path: str,
+        sha256: str,
+        filename: str,
+    ) -> None:
+        """Record the most recent inbound image for ``sender``.
+
+        Single row per phone (upsert). Used by :mod:`src.image_handler` so a
+        follow-up caption can be routed against the right photo. Added in #10.
+        """
+        assert self._conn is not None
+        self._conn.execute(
+            """
+            INSERT INTO last_image (sender, message_id, path, sha256, filename, saved_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(sender) DO UPDATE SET
+                message_id = excluded.message_id,
+                path       = excluded.path,
+                sha256     = excluded.sha256,
+                filename   = excluded.filename,
+                saved_at   = excluded.saved_at
+            """,
+            (sender, message_id, path, sha256, filename, time.time()),
+        )
+
+    def get_last_image(self, sender: str) -> dict[str, str] | None:
+        """Return the last image metadata for ``sender`` or ``None``."""
+        assert self._conn is not None
+        row = self._conn.execute(
+            "SELECT message_id, path, sha256, filename, saved_at FROM last_image WHERE sender = ?",
+            (sender,),
+        ).fetchone()
+        if row is None:
+            return None
+        return {
+            "message_id": str(row["message_id"]),
+            "path": str(row["path"]),
+            "sha256": str(row["sha256"]),
+            "filename": str(row["filename"]),
+            "saved_at": str(row["saved_at"]),
+        }
 
 
 @contextlib.contextmanager

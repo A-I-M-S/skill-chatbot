@@ -48,6 +48,32 @@ class InboxMessage(dict):
     def text(self) -> str:
         return str(self.get("text") or "")
 
+    @property
+    def image(self) -> dict[str, str] | None:
+        """Image metadata attached to the message (issue #10).
+
+        Returns ``None`` if the inbound message had no image (text-only or
+        an oversize image dropped by the bridge). The shape is::
+
+            {"path": str, "sha256": str, "filename": str}
+        """
+        raw = self.get("image")
+        if not isinstance(raw, dict):
+            return None
+        try:
+            path = str(raw["path"])
+            sha256 = str(raw["sha256"])
+            filename = str(raw["filename"])
+        except KeyError:
+            return None
+        if not path or not sha256:
+            return None
+        return {"path": path, "sha256": sha256, "filename": filename}
+
+    @property
+    def has_image(self) -> bool:
+        return self.image is not None
+
 
 class Tailer:
     """Tails the wa-bridge inbox NDJSON, yielding parsed lines.

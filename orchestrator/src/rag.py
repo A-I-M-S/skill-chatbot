@@ -30,4 +30,22 @@ def ask(question: str) -> str:
     return str(result["answer"])
 
 
-__all__ = ["ask"]
+def ask_with_photo(question: str, photo_path: str | None = None) -> str:
+    """Photo-aware question (issue #10).
+
+    For v1 we don't have a multimodal model, so this just prepends the photo
+    path context (mirroring ``rag_qdrant``'s photo support section) and falls
+    through to :func:`ask`. The path is best-effort: the bridge has already
+    saved the file under ``<RAG_PHOTOS_DIR>/inbound/<sha>.<ext>``, so a
+    follow-up question can be answered from the rag-photos corpus via
+    :func:`ask`.
+
+    Tests monkeypatch :func:`ask` so this function is fully covered without
+    touching Qdrant. The signature is stable — issue #4's router will call
+    this variant when the user message references a photo.
+    """
+    contextualised = f"[photo at {photo_path}] {question}" if photo_path else question
+    return ask(contextualised)
+
+
+__all__ = ["ask", "ask_with_photo"]
