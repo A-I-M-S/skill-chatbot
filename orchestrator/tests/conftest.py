@@ -10,6 +10,7 @@ Shared helpers:
 
 from __future__ import annotations
 
+import os
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -18,6 +19,8 @@ import respx
 from httpx import Response
 
 from src import rag as rag_mod
+from src import router as router_mod
+from src import main as main_mod
 from src.settings import Settings
 
 
@@ -66,6 +69,88 @@ def fake_rag_ask(monkeypatch: pytest.MonkeyPatch) -> Iterator[list[tuple[str, st
 
     monkeypatch.setattr(rag_mod, "ask", _fake)
     yield calls
+
+
+@pytest.fixture
+def fake_router(monkeypatch: pytest.MonkeyPatch) -> Iterator[list[dict[str, object]]]:
+    """Replace ``src.router.route_message`` so we don't need an LLM.
+
+    The stub records every call (caller can assert routing decisions) and
+    returns a canned ``RouterDecision(tool='faq', arguments={'question': text})``.
+    Set ``FAKE_ROUTER_TOOL=handoff`` (etc.) via monkeypatch to override the
+    returned tool.
+    """
+    calls: list[dict[str, object]] = []
+
+    def _fake(**kwargs: object) -> router_mod.RouterDecision:
+        from src.enums import HandoffReason
+
+        calls.append(kwargs)
+        tool = os.environ.get("FAKE_ROUTER_TOOL", "faq")
+        text = str(kwargs.get("user_text", ""))
+        if tool == "faq":
+            return router_mod.RouterDecision(
+                tool="faq", arguments={"question": text}, language=str(kwargs.get("language", "en"))
+            )
+        if tool == "handoff":
+            return router_mod.RouterDecision(
+                tool="handoff",
+                arguments={"reason": HandoffReason.OTHER.value, "summary": text},
+                language=str(kwargs.get("language", "en")),
+            )
+        return router_mod.RouterDecision(
+            tool=tool, arguments={}, language=str(kwargs.get("language", "en"))
+        )
+
+    monkeypatch.setattr(router_mod, "route_message", _fake)
+    monkeypatch.setattr(main_mod, "route_message", _fake)
+    yield calls
+
+
+@pytest.fixture(autouse=True)
+def _stub_router_for_tests_without_real_llm(
+    request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch
+) -> Iterator[None]:
+    """Auto-stub the router unless the test asks for a real one.
+
+    Tests that want to drive the router themselves should set
+    ``@pytest.mark.real_router`` and provide their own stub via the
+    ``fake_router`` fixture (or inject a custom ``client``).
+    """
+    if "real_router" in request.keywords:
+        yield
+        return
+    # Also skip if the test already requested a fake_router manually.
+    if "fake_router" in request.fixturenames:
+        yield
+        return
+    calls: list[dict[str, object]] = []
+
+    def _fake(**kwargs: object) -> router_mod.RouterDecision:
+        from src.enums import HandoffReason
+
+        calls.append(kwargs)
+        tool = os.environ.get("FAKE_ROUTER_TOOL", "faq")
+        text = str(kwargs.get("user_text", ""))
+        if tool == "faq":
+            return router_mod.RouterDecision(
+                tool="faq",
+                arguments={"question": text},
+                language=str(kwargs.get("language", "en")),
+            )
+        if tool == "handoff":
+            return router_mod.RouterDecision(
+                tool="handoff",
+                arguments={"reason": HandoffReason.OTHER.value, "summary": text},
+                language=str(kwargs.get("language", "en")),
+            )
+        return router_mod.RouterDecision(
+            tool=tool, arguments={}, language=str(kwargs.get("language", "en"))
+        )
+
+    monkeypatch.setattr(router_mod, "route_message", _fake)
+    monkeypatch.setattr(main_mod, "route_message", _fake)
+    yield
 
 
 def bridge_send_response() -> Response:
