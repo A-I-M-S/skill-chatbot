@@ -44,11 +44,19 @@ Multilingual: **EN + 中文**, auto-detected from the inbound message. LLM repli
 - Same `INFERENCE_BASE_URL` / `INFERENCE_API_KEY` / `INFERENCE_MODEL` as `rag-qdrant`
 - Same `QDRANT_URL` / `QDRANT_API_KEY` as `rag-qdrant`
 
-## Existing skills — quick reference
+## Existing skills — quick reference (snapshots in this repo)
 
-- `rag-qdrant` SKILL.md: `/root/.openclaw/skills/rag-qdrant/SKILL.md` — read sections on `handle_message`, `AgentMessage`, photo matching, caching
-- `farm-tour-booking` SKILL.md: `/root/.openclaw/workspace/admin/skills/farm-tour-booking/SKILL.md` — read sections on scripts, output contract, edge cases, escalation
-- `farm-tour-booking/scripts/booking_flow.py` — see `op_new`, `op_list`, `op_edit`, `op_cancel` for the exact CLI surface
+The upstream skill files are **snapshotted** into `references/upstream/` so the Plan agent can read them as in-project files. **Read from `references/upstream/`, not from the live skill paths.**
+
+- `references/upstream/rag-qdrant-SKILL.md` — agent adapter, ACL, caching, photo support
+- `references/upstream/rag-qdrant-README.md` — full API surface
+- `references/upstream/rag-qdrant-requirements.txt` — pin compatible versions
+- `references/upstream/farm-tour-booking-SKILL.md` — intent routing, edge cases, escalation
+- `references/upstream/booking_flow.py` — see `op_new`, `op_list`, `op_edit`, `op_cancel` for the exact CLI surface
+- `references/upstream/intent.py`, `composio_outlook.py` — supporting scripts
+- `references/upstream/booking_rules.yaml` — source of truth for hours, capacity, pricing, blackout
+
+If the snapshots ever go stale, refresh with `bash scripts/snapshot-upstream.sh`.
 
 ## The 15 issues (use **title prefix** as canonical order, not GitHub issue number)
 
