@@ -95,3 +95,10 @@ The orchestrator imports `rag_qdrant` directly and uses its `ask()` function, so
 - `orchestrator.log` — per-message: phone, detected intent, tool called, latency, tokens
 - `state.sqlite` — every state transition logged in a `state_log` table (insert-only, time + phone + flow + diff)
 - `inbox.ndjson` — durable record of every inbound message for replay
+
+## Related docs
+
+- [message-flows.md](message-flows.md) — sample EN + 中文 dialogues for each flow and handoff reason
+- [runbook.md](runbook.md) — operator playbook for the 12 common incidents (bridge down, session lost, LLM 429 storm, …)
+- [security.md](security.md) — what is logged, who can read `state.sqlite`, secret rotation, PII erasure
+- [ops.md](ops.md) — systemd units, smoke test, backups
