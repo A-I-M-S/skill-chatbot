@@ -1,0 +1,32 @@
+# Auto-detect text files; force LF for cross-platform sanity.
+* text=auto eol=lf
+
+# Explicitly mark binary blobs.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.zip binary
+*.gz binary
+*.tgz binary
+*.whl binary
+*.so binary
+*.node binary
+
+# Lockfiles must use LF even on Windows.
+package-lock.json text eol=lf
+yarn.lock text eol=lf
+pnpm-lock.yaml text eol=lf
+pyproject.toml text eol=lf
+
+# Shell scripts: LF only.
+*.sh text eol=lf
+
+# NDJSON: line-oriented, must stay LF.
+*.ndjson text eol=lf
+*.jsonl text eol=lf
+
+# Markdown: keep trailing whitespace visible (two-space line break).
+*.md text eol=lf whitespace=-trailing-space

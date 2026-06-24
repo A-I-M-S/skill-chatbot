@@ -1,0 +1,13 @@
+line-length = 100
+target-version = "py311"
+
+[lint]
+select = ["E", "F", "W", "I", "B", "UP", "N", "SIM", "RUF"]
+ignore = [
+    "E501",  # line length handled by formatter
+]
+
+[format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"

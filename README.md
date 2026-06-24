@@ -66,28 +66,44 @@ Destructive ops (edit / cancel) **always** require a plain `YES` reply to a conf
 skill-chatbot/
 ├── README.md             # this file
 ├── SKILL.md              # openclaw skill wrapper (status, logs, deploy, smoke)
+├── Makefile              # root dispatch — `make help` for the full list
 ├── .env.example
+├── .editorconfig
+├── .gitattributes
 ├── .gitignore
 ├── docs/
 │   ├── architecture.md
 │   ├── ops.md
-│   └── message-flows.md
+│   ├── message-flows.md
+│   ├── runbook.md
+│   ├── security.md
+│   └── plans/phase-0-bootstrap.md
+├── scripts/
+│   ├── create-issues.sh
+│   ├── snapshot-upstream.sh
+│   ├── install-systemd.sh
+│   └── dev-loop.sh
 ├── wa-bridge/            # Node.js + Baileys
 │   ├── package.json
 │   ├── tsconfig.json
-│   ├── src/
+│   ├── vitest.config.ts
+│   ├── Makefile
+│   ├── .env.example
+│   ├── auth_info/        # runtime, gitignored
+│   ├── queue/            # runtime, gitignored
+│   ├── src/              # index, auth, socket, inbox, http, sender, log, env, image
 │   ├── bin/auth.ts
 │   └── tests/
 └── orchestrator/         # Python 3.11
     ├── pyproject.toml
-    ├── src/
-    │   ├── main.py
-    │   ├── router.py
-    │   ├── state.py
-    │   ├── flows/
-    │   ├── notify.py
-    │   └── i18n.py
-    ├── scripts/
+    ├── ruff.toml
+    ├── Makefile
+    ├── .env.example
+    ├── state.sqlite      # runtime, gitignored
+    ├── src/              # main, tail, state, http, router, inference, rag,
+    │                     # booking_subprocess, i18n, language, notify, enums,
+    │                     # prompts/, flows/
+    ├── scripts/          # smoke, ingest_rules, ingest_file, reindex
     └── tests/
 ```
 
@@ -101,24 +117,34 @@ skill-chatbot/
 
 ## Quick start
 
+The dev loop is driven by the root `Makefile`. Every target maps to one job; run `make help` for the full list.
+
 ```bash
 # 1. Clone + env
 git clone https://github.com/A-I-M-S/skill-chatbot
 cd skill-chatbot
-cp .env.example .env
-# edit .env — see .env.example for all keys
+cp .env.example .env          # then fill in the keys (see .env.example)
+make help                      # print every documented target
 
-# 2. wa-bridge (Node)
-cd wa-bridge
-npm install
-npm run auth    # prints QR — scan from WhatsApp app
-npm run dev     # start the bridge
+# 2. Install both daemons
+make bridge-install            # wa-bridge: npm ci
+make orch-venv                 # orchestrator: python3.11 -m venv .venv
+make orch-install              # orchestrator: pip install -e '.[dev]'
 
-# 3. orchestrator (Python)
-cd ../orchestrator
-python -m venv .venv && . .venv/bin/activate
-pip install -e .
-python -m src.main
+# 3. Pair WhatsApp (prints QR — scan from the WhatsApp app)
+make bridge-auth
+
+# 4. Run both daemons (foreground, two background jobs, Ctrl-C stops both)
+make bridge-dev                # in one terminal
+make orch-dev                  # in another
+# or, in a single terminal:
+bash scripts/dev-loop.sh
+
+# 5. Tests + lint
+make bridge-test
+make bridge-lint
+make orch-test
+make orch-lint
 ```
 
 See `docs/ops.md` for systemd units, log paths, restart, and the QR re-auth flow.

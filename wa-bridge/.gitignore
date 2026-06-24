@@ -1,0 +1,20 @@
+node_modules/
+dist/
+*.tsbuildinfo
+.eslintcache
+
+# Baileys auth state
+auth_info/
+auth/
+store/
+*.creds.json
+**/creds.json
+
+# NDJSON inbox + outbound queue
+inbox.ndjson
+queue/*.jsonl
+!queue/.gitkeep
+
+# Local env
+.env
+.env.local
