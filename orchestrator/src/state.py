@@ -17,10 +17,13 @@ Schema:
 - ``processed_messages(message_id TEXT PRIMARY KEY, processed_at REAL NOT NULL)``
 - ``last_image(sender TEXT PRIMARY KEY, message_id TEXT NOT NULL, path TEXT NOT NULL,
   sha256 TEXT NOT NULL, filename TEXT NOT NULL, saved_at REAL NOT NULL)``
+- ``state_log(id INTEGER PRIMARY KEY, phone TEXT, old_flow TEXT, new_flow TEXT,
+  old_draft TEXT, new_draft TEXT, at REAL)`` — insert-only audit of every
+  state transition (issue #12)
 
-``processed_messages`` is the dedupe boundary for v0 (full idempotency lands in
-issue #12). ``last_image`` records the most recent inbound image per phone, used
-by issue #10's caption routing.
+``processed_messages`` is the dedupe boundary. ``last_image`` records the most
+recent inbound image per phone, used by #10's caption routing. ``state_log`` is
+the append-only audit of every flow transition (added in #12).
 """
 
 from __future__ import annotations
@@ -50,6 +53,16 @@ CREATE TABLE IF NOT EXISTS last_image (
     filename    TEXT NOT NULL,
     saved_at    REAL NOT NULL
 );
+CREATE TABLE IF NOT EXISTS state_log (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    phone       TEXT NOT NULL,
+    old_flow    TEXT,
+    new_flow    TEXT NOT NULL,
+    old_draft   TEXT,
+    new_draft   TEXT,
+    at          REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_state_log_phone_at ON state_log(phone, at);
 """
 
 CREATE_WAL_PRAGMAS = (
@@ -190,6 +203,92 @@ class State:
             "filename": str(row["filename"]),
             "saved_at": str(row["saved_at"]),
         }
+
+
+
+
+    # ── state_log (insert-only audit) ───────────────────────────────────
+    # Every state transition writes one row. Used by ops to reconstruct
+    # the conversation lifecycle for any phone. Append-only — never UPDATE
+    # or DELETE. The (phone, at) index supports "show me everything for
+    # +65xxx" queries.
+
+    def log_state(
+        self,
+        phone: str,
+        old_flow: str | None,
+        new_flow: str,
+        old_draft: dict[str, Any] | None = None,
+        new_draft: dict[str, Any] | None = None,
+    ) -> None:
+        """Append a state transition to ``state_log``.
+
+        ``old_flow`` and ``new_flow`` are the ``Flow`` enum string values
+        (e.g. ``"idle"``, ``"book_new"``, ``"handoff"``). ``old_draft`` /
+        ``new_draft`` are the partial-field collections the flow is
+        building up; serialised to JSON for storage. Use ``None`` when
+        the draft is empty (typical for non-booking flows).
+        """
+        import json
+
+        assert self._conn is not None
+        self._conn.execute(
+            """
+            INSERT INTO state_log (phone, old_flow, new_flow, old_draft, new_draft, at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                phone,
+                old_flow,
+                new_flow,
+                json.dumps(old_draft) if old_draft is not None else None,
+                json.dumps(new_draft) if new_draft is not None else None,
+                time.time(),
+            ),
+        )
+
+    def get_state_log(self, phone: str, limit: int = 50) -> list[dict[str, Any]]:
+        """Return the most recent state transitions for ``phone``.
+
+        Newest first; ``limit`` caps the number of rows. Used by the
+        runbook's "show me the last 10 transitions for +65xxx" command
+        and by tests.
+        """
+        import json
+
+        assert self._conn is not None
+        rows = self._conn.execute(
+            "SELECT id, phone, old_flow, new_flow, old_draft, new_draft, at "
+            "FROM state_log WHERE phone = ? ORDER BY at DESC, id DESC LIMIT ?",
+            (phone, limit),
+        ).fetchall()
+        out: list[dict[str, Any]] = []
+        for row in rows:
+            old_draft = row["old_draft"]
+            new_draft = row["new_draft"]
+            out.append(
+                {
+                    "id": int(row["id"]),
+                    "phone": str(row["phone"]),
+                    "old_flow": row["old_flow"],
+                    "new_flow": str(row["new_flow"]),
+                    "old_draft": json.loads(old_draft) if old_draft is not None else None,
+                    "new_draft": json.loads(new_draft) if new_draft is not None else None,
+                    "at": float(row["at"]),
+                }
+            )
+        return out
+
+    def latest_flow(self, phone: str) -> str | None:
+        """Return the most-recent ``new_flow`` for ``phone`` (or ``None``)."""
+        assert self._conn is not None
+        row = self._conn.execute(
+            "SELECT new_flow FROM state_log WHERE phone = ? "
+            "ORDER BY at DESC, id DESC LIMIT 1",
+            (phone,),
+        ).fetchone()
+        return str(row["new_flow"]) if row is not None else None
+
 
 
 @contextlib.contextmanager
