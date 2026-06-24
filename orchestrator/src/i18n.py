@@ -161,6 +161,29 @@ STRINGS: dict[tuple[str, str], str] = {
     ("zh", "yes_received_cancelled"): "已取消。编号 #{event_id}。",
     ("en", "aborted"): "OK, no problem.",
     ("zh", "aborted"): "好的，没问题。",
+    # ── book_new per-field asks (#9) ─────────────────────────────────
+    ("en", "ask_date"): "What date would you like? (YYYY-MM-DD)",
+    ("zh", "ask_date"): "请问您想预约哪一天？（YYYY-MM-DD）",
+    ("en", "ask_time"): "What time? (HH:MM, 24-hour)",
+    ("zh", "ask_time"): "请问几点？（24 小时制，HH:MM）",
+    ("en", "ask_pax"): "How many people?",
+    ("zh", "ask_pax"): "请问有多少人？",
+    ("en", "ask_contact_name"): "Contact name?",
+    ("zh", "ask_contact_name"): "联系人姓名？",
+    ("en", "ask_contact"): "Contact email or phone? (at least one)",
+    ("zh", "ask_contact"): "联系邮箱或电话？（至少填一个）",
+    ("en", "ask_org"): "Organisation or school? (optional — type 'skip' to omit)",
+    ("zh", "ask_org"): "学校或单位？（可选 — 输入「跳过」即可）",
+    ("en", "ask_notes"): "Any notes? (optional — type 'skip' to omit)",
+    ("zh", "ask_notes"): "备注？（可选 — 输入「跳过」即可）",
+    # ── book_edit confirm + field ask (#9) ────────────────────────────
+    ("en", "edit_confirm"): "I'll change **{old}** → **{new}**. Reply **YES** to confirm.",
+    ("zh", "edit_confirm"): "我将把 **{old}** 改为 **{new}**。回复 **YES** 确认。",
+    ("en", "edit_ask_field"): "Which would you like to change — date, time, or pax?",
+    ("zh", "edit_ask_field"): "您想修改哪一项？日期、时间，还是人数？",
+    # ── book_cancel confirm (#9) ──────────────────────────────────────
+    ("en", "cancel_confirm"): "I'll cancel **{event_summary}**. This is irreversible. Reply **YES** to confirm, or anything else to keep the booking.",
+    ("zh", "cancel_confirm"): "我将取消 **{event_summary}**。此操作不可撤销。回复 **YES** 确认，或回复其他内容保留预约。",
 }
 
 
@@ -169,10 +192,13 @@ def t(key: str, language: str, **kwargs: Any) -> str:
 
     Raises ``KeyError`` if the key is missing in either language — the
     test suite enforces that every key is bilingual. Empty / default
-    language is EN.
+    language is EN. Locale tags like ``zh-CN`` / ``zh-TW`` are
+    normalised to ``zh``.
     """
     lang = (language or "en").lower()
-    if not lang.startswith("zh"):
+    if lang.startswith("zh"):
+        lang = "zh"
+    else:
         lang = "en"
     s = STRINGS.get((lang, key))
     if s is None:

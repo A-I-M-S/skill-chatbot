@@ -248,7 +248,28 @@ def _handle_confirm(
             state.clear_phone_state(phone)
             return t("handoff_msg", language, admin_contact=os.environ.get("ADMIN_CONTACT_NUMBER", ""))
 
-        # Success — clear state and return the upstream reply (or our own).
+        # Success — clear state and notify admins (issue #8), then
+        # return the upstream reply (which includes the booking id).
+        event_id = (result.get("event") or {}).get("id") or result.get("event_id") or "unknown"
+        try:
+            from src import notify as notify_mod
+            notify_mod.notify_new_booking(
+                sender=phone,
+                event_id=str(event_id),
+                summary={
+                    "date": draft.get("date", ""),
+                    "time": draft.get("time", ""),
+                    "pax": draft.get("pax"),
+                    "contact_name": draft.get("contact_name"),
+                    "contact_email": draft.get("contact_email"),
+                    "contact_phone": draft.get("contact_phone"),
+                    "org": draft.get("org"),
+                },
+                language=language,
+            )
+        except Exception as e:  # noqa: BLE001
+            # Best-effort — log and continue; the booking already succeeded.
+            logger.warning("notify_new_booking failed (booking already committed): %s", e)
         state.clear_phone_state(phone)
         upstream_reply = result.get("reply", "")
         if result.get("error"):
@@ -267,38 +288,16 @@ def _handle_confirm(
 
 
 def _ask_for(field: str, language: str) -> str:
-    prompts = {
-        "date": {
-            "en": "What date would you like? (YYYY-MM-DD)",
-            "zh": "请问您想预约哪一天？（YYYY-MM-DD）",
-        },
-        "time": {
-            "en": "What time? (HH:MM, 24-hour)",
-            "zh": "请问几点？（24 小时制，HH:MM）",
-        },
-        "pax": {
-            "en": "How many people?",
-            "zh": "请问有多少人？",
-        },
-        "contact_name": {
-            "en": "Contact name?",
-            "zh": "联系人姓名？",
-        },
-        "contact": {
-            "en": "Contact email or phone? (at least one)",
-            "zh": "联系邮箱或电话？（至少填一个）",
-        },
-        "org": {
-            "en": "Organisation or school? (optional — type 'skip' to omit)",
-            "zh": "学校或单位？（可选 — 输入「跳过」即可）",
-        },
-        "notes": {
-            "en": "Any notes? (optional — type 'skip' to omit)",
-            "zh": "备注？（可选 — 输入「跳过」即可）",
-        },
-    }
-    p = prompts.get(field, prompts["date"])
-    return p.get("zh" if language.lower().startswith("zh") else "en", p["en"])
+    key = {
+        "date": "ask_date",
+        "time": "ask_time",
+        "pax": "ask_pax",
+        "contact_name": "ask_contact_name",
+        "contact": "ask_contact",
+        "org": "ask_org",
+        "notes": "ask_notes",
+    }.get(field, "ask_date")
+    return t(key, language)
 
 
 def _field_for_error(err: str, draft: dict[str, Any]) -> str | None:

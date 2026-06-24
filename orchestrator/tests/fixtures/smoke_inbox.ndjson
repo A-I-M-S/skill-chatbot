@@ -1,0 +1,15 @@
+{"message_id": "smoke-1", "from": "6591234567", "text": "What time do you open?", "image": null, "timestamp": "2026-06-24T08:00:00Z"}
+{"message_id": "smoke-2", "from": "6591234567", "text": "Can we book 30 kids on 15 Aug 2026 at 10:30?", "image": null, "timestamp": "2026-06-24T08:01:00Z"}
+{"message_id": "smoke-3", "from": "6591234567", "text": "15 Aug", "image": null, "timestamp": "2026-06-24T08:02:00Z"}
+{"message_id": "smoke-4", "from": "6591234567", "text": "10:30", "image": null, "timestamp": "2026-06-24T08:03:00Z"}
+{"message_id": "smoke-5", "from": "6591234567", "text": "30", "image": null, "timestamp": "2026-06-24T08:04:00Z"}
+{"message_id": "smoke-6", "from": "6591234567", "text": "jane@school.cn", "image": null, "timestamp": "2026-06-24T08:05:00Z"}
+{"message_id": "smoke-7", "from": "6591234567", "text": "yes", "image": null, "timestamp": "2026-06-24T08:06:00Z"}
+{"message_id": "smoke-8", "from": "6591234567", "text": "I want a refund", "image": null, "timestamp": "2026-06-24T08:07:00Z"}
+{"message_id": "smoke-9", "from": "6590000001", "text": "几点开门？", "image": null, "timestamp": "2026-06-24T08:08:00Z"}
+{"message_id": "smoke-10", "from": "6590000001", "text": "我想预约 8月15日 10:30", "image": null, "timestamp": "2026-06-24T08:09:00Z"}
+{"message_id": "smoke-11", "from": "6590000001", "text": "15", "image": null, "timestamp": "2026-06-24T08:10:00Z"}
+{"message_id": "smoke-12", "from": "6590000001", "text": "30", "image": null, "timestamp": "2026-06-24T08:11:00Z"}
+{"message_id": "smoke-13", "from": "6590000001", "text": "zhang@school.cn", "image": null, "timestamp": "2026-06-24T08:12:00Z"}
+{"message_id": "smoke-14", "from": "6590000001", "text": "是", "image": null, "timestamp": "2026-06-24T08:13:00Z"}
+{"message_id": "smoke-15", "from": "6590000001", "text": "我要退款", "image": null, "timestamp": "2026-06-24T08:14:00Z"}
