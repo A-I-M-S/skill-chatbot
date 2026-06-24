@@ -248,7 +248,28 @@ def _handle_confirm(
             state.clear_phone_state(phone)
             return t("handoff_msg", language, admin_contact=os.environ.get("ADMIN_CONTACT_NUMBER", ""))
 
-        # Success — clear state and return the upstream reply (or our own).
+        # Success — clear state and notify admins (issue #8), then
+        # return the upstream reply (which includes the booking id).
+        event_id = (result.get("event") or {}).get("id") or result.get("event_id") or "unknown"
+        try:
+            from src import notify as notify_mod
+            notify_mod.notify_new_booking(
+                sender=phone,
+                event_id=str(event_id),
+                summary={
+                    "date": draft.get("date", ""),
+                    "time": draft.get("time", ""),
+                    "pax": draft.get("pax"),
+                    "contact_name": draft.get("contact_name"),
+                    "contact_email": draft.get("contact_email"),
+                    "contact_phone": draft.get("contact_phone"),
+                    "org": draft.get("org"),
+                },
+                language=language,
+            )
+        except Exception as e:  # noqa: BLE001
+            # Best-effort — log and continue; the booking already succeeded.
+            logger.warning("notify_new_booking failed (booking already committed): %s", e)
         state.clear_phone_state(phone)
         upstream_reply = result.get("reply", "")
         if result.get("error"):

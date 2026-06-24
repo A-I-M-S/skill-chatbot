@@ -98,25 +98,68 @@ def notify_new_booking(
     event_id: str,
     summary: dict[str, Any],
     *,
+    language: str = "en",
     client: httpx.Client | None = None,
 ) -> int:
     """Notify admins that a new booking was committed.
 
-    Stub for v1 (issue #8 will add language detection + bilingual
-    formatting). Currently sends the same format as :func:`notify_handoff`
-    but with a "new booking" prefix.
+    Bilingual message — the language is the customer's language, so the
+    admin sees the booking summary in the same language the customer
+    used. Failures are logged and swallowed (the booking itself
+    succeeds; the admin DM is best-effort).
     """
     admins = _split_admins()
     if not admins:
+        logger.warning(
+            "WA_NOTIFY is empty; new-booking alert for sender=%s event=%s not delivered",
+            sender,
+            event_id,
+        )
         return 0
     url, token = _bridge_send_url()
-    fields = ", ".join(f"{k}={v}" for k, v in summary.items() if v is not None)
-    body = (
-        f"\U0001f195 New farm tour booking\n"
-        f"From: +{sender.lstrip('+')}\n"
-        f"event_id: {event_id}\n"
-        f"{fields}"
-    )
+
+    if (language or "en").lower().startswith("zh"):
+        title = "🆕 新预约"
+        from_line = "客户"
+        label_event = "编号"
+        label_pax = "人数"
+        label_when = "时间"
+        label_contact = "联系人"
+        label_org = "单位"
+    else:
+        title = "🆕 New farm tour booking"
+        from_line = "From"
+        label_event = "event_id"
+        label_pax = "pax"
+        label_when = "when"
+        label_contact = "contact"
+        label_org = "org"
+
+    body_lines = [
+        title,
+        f"{from_line}: +{sender.lstrip('+')}",
+        f"{label_event}: {event_id}",
+    ]
+    when = summary.get("when") or f"{summary.get('date', '?')} {summary.get('time', '?')}"
+    if when:
+        body_lines.append(f"{label_when}: {when}")
+    if summary.get("pax") is not None:
+        body_lines.append(f"{label_pax}: {summary['pax']}")
+    if summary.get("contact_name") or summary.get("contact_email") or summary.get("contact_phone"):
+        contact = " ".join(
+            str(x)
+            for x in (
+                summary.get("contact_name"),
+                f"<{summary['contact_email']}>" if summary.get("contact_email") else "",
+                summary.get("contact_phone") or "",
+            )
+            if x
+        ).strip()
+        body_lines.append(f"{label_contact}: {contact}")
+    if summary.get("org"):
+        body_lines.append(f"{label_org}: {summary['org']}")
+    body = "\n".join(body_lines)
+
     own_client = client or httpx.Client()
     sent = 0
     try:
