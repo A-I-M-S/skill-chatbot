@@ -163,7 +163,7 @@ def handle_message(
         decision.fallback,
     )
 
-    reply_text = _dispatch_decision(state, client, settings, decision, sender, message_id, language)
+    reply_text = _dispatch_decision(state, client, settings, decision, sender, message_id, language, text)
     post_reply(
         client,
         str(settings.wa_bridge_url),
@@ -183,6 +183,7 @@ def _dispatch_decision(
     sender: str,
     message_id: str,
     language: str | None,
+    user_text: str = "",
 ) -> str:
     """Dispatch a router decision to the right flow handler.
 
@@ -207,15 +208,32 @@ def _dispatch_decision(
             return i18n_t("abusive_msg", lang)
         return i18n_t("handoff_msg", lang, admin_contact=admin_contact)
 
-    # Booking tools (placeholder — full implementation lands in #5/#6/#7)
-    if decision.tool in ("book_new", "book_edit", "book_cancel"):
-        logger.info(
-            "booking tool %s dispatched to placeholder (full impl in #5/#6/#7)",
-            decision.tool,
+    # Booking tools
+    if decision.tool == "book_new":
+        from .flows import booking_new
+
+        # If we're mid-flow in awaiting_confirm, the user's reply is the
+        # user_text (router still emits tool=book_new with no args, or the
+        # user just types "yes"). We treat any reply while in awaiting_confirm
+        # as a confirm reply.
+        ps = state.get_phone_state(sender)
+        confirm = None
+        if ps and ps.get("flow") == "book_new" and ps.get("pending_confirm"):
+            confirm = user_text
+        return booking_new.handle(
+            phone=sender,
+            user_text=user_text,
+            tool_args=decision.arguments,
+            state=state,
+            language=lang,
+            confirm_reply=confirm,
         )
+
+    if decision.tool in ("book_edit", "book_cancel"):
+        # Full impl lands in #6 / #7
         return (
-            "Got it — I'm setting that up. The booking system will message "
-            "you shortly to confirm."
+            "Got it — I'm pulling up your bookings. The booking system will "
+            "message you shortly with options."
         )
 
     # Unknown tool — should never happen because the router validates, but

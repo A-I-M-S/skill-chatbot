@@ -63,6 +63,14 @@ CREATE TABLE IF NOT EXISTS state_log (
     at          REAL NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_state_log_phone_at ON state_log(phone, at);
+CREATE TABLE IF NOT EXISTS phone_state (
+    phone             TEXT PRIMARY KEY,
+    flow              TEXT NOT NULL DEFAULT 'idle',
+    draft             TEXT,
+    pending_confirm   TEXT,
+    language          TEXT NOT NULL DEFAULT 'en',
+    updated_at        REAL NOT NULL
+);
 """
 
 CREATE_WAL_PRAGMAS = (
@@ -288,6 +296,92 @@ class State:
             (phone,),
         ).fetchone()
         return str(row["new_flow"]) if row is not None else None
+
+    # ── phone_state (per-customer multi-turn flow state) ─────────────
+    # One row per phone. Holds the current flow (idle / book_new /
+    # book_edit / book_cancel / handoff), the partial draft, the
+    # pending confirmation payload, and the detected language.
+    # Drafts and pending_confirm are JSON-encoded.
+
+    def get_phone_state(self, phone: str) -> dict[str, Any] | None:
+        """Return the phone_state row for ``phone`` as a dict, or None."""
+        assert self._conn is not None
+        row = self._conn.execute(
+            "SELECT flow, draft, pending_confirm, language, updated_at "
+            "FROM phone_state WHERE phone = ?",
+            (phone,),
+        ).fetchone()
+        if row is None:
+            return None
+        import json as _json
+
+        draft_raw = row["draft"]
+        confirm_raw = row["pending_confirm"]
+        return {
+            "phone": phone,
+            "flow": str(row["flow"]),
+            "draft": _json.loads(draft_raw) if draft_raw else None,
+            "pending_confirm": _json.loads(confirm_raw) if confirm_raw else None,
+            "language": str(row["language"]),
+            "updated_at": float(row["updated_at"]),
+        }
+
+    def set_phone_state(
+        self,
+        phone: str,
+        flow: str,
+        draft: dict[str, Any] | None = None,
+        pending_confirm: dict[str, Any] | None = None,
+        language: str | None = None,
+    ) -> None:
+        """Upsert the phone_state row. ``flow`` is required; the rest merge."""
+        import json as _json
+
+        assert self._conn is not None
+        existing = self.get_phone_state(phone)
+        if existing is None:
+            existing = {
+                "draft": None,
+                "pending_confirm": None,
+                "language": "en",
+            }
+        merged_draft = draft if draft is not None else existing.get("draft")
+        merged_confirm = (
+            pending_confirm if pending_confirm is not None else existing.get("pending_confirm")
+        )
+        merged_lang = language if language is not None else existing.get("language", "en")
+        self._conn.execute(
+            """
+            INSERT INTO phone_state (phone, flow, draft, pending_confirm, language, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(phone) DO UPDATE SET
+                flow            = excluded.flow,
+                draft           = excluded.draft,
+                pending_confirm = excluded.pending_confirm,
+                language        = excluded.language,
+                updated_at      = excluded.updated_at
+            """,
+            (
+                phone,
+                flow,
+                _json.dumps(merged_draft) if merged_draft is not None else None,
+                _json.dumps(merged_confirm) if merged_confirm is not None else None,
+                merged_lang,
+                time.time(),
+            ),
+        )
+
+    def clear_phone_state(self, phone: str) -> None:
+        """Reset the phone back to idle (clears draft and pending_confirm)."""
+        assert self._conn is not None
+        self._conn.execute(
+            """
+            UPDATE phone_state
+               SET flow = 'idle', draft = NULL, pending_confirm = NULL, updated_at = ?
+             WHERE phone = ?
+            """,
+            (time.time(), phone),
+        )
 
 
 
