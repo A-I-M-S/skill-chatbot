@@ -108,6 +108,19 @@ skill-chatbot/
 ```
 
 ## Reuses (do not reinvent)
+## Data sources
+
+The FAQ tool answers from content pushed into the existing Qdrant collection. Two operator-editable sources ship in the repo; re-ingest after any edit.
+
+| Source | Path | Ingest command |
+|---|---|---|
+| Booking rules | `orchestrator/data/booking_rules.yaml` (copied from the upstream `farm-tour-booking` skill) | `make ingest-rules` |
+| FAQ corpus | `orchestrator/data/faq.md` | `make ingest-file FILE=orchestrator/data/faq.md` |
+
+Both go through `from rag_qdrant import ingest_text; ingest_text(markdown, source=…)` and are idempotent: re-running on the same `source` updates in place (point-id hashing).
+
+Refresh the snapshots with `bash scripts/snapshot-upstream.sh`.
+
 
 - **rag-qdrant** — `/root/.openclaw/skills/rag-qdrant/` · `from rag_qdrant import ask`
 - **farm-tour-booking** — `/root/.openclaw/workspace/admin/skills/farm-tour-booking/` · invoked as `python3 scripts/booking_flow.py …`
