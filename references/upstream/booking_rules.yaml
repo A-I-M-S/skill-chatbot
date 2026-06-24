@@ -1,0 +1,63 @@
+# Booking rules for BlueAcres / SAAC FARM
+# Edited manually (not via onboard.py). Each section is labelled below.
+# Skill reads this via BOOKING_RULES_PATH (default config/booking_rules.yaml).
+
+location_default: "SAAC FARM, 1 Elliot Road, Singapore 458686"
+timezone: "Asia/Singapore"
+
+# -----------------------------------------------------------------------------
+# Operating hours (HH:MM, 24h, SGT). Window[0]=earliest start, window[1]=latest
+# start. A booking starting exactly at window[1] is allowed — the slot may run
+# past window[1] by `slot_duration_minutes`. Set a day to `null` to close.
+# To change: edit the times inline. Add/remove days freely.
+# -----------------------------------------------------------------------------
+operating_hours:
+  mon: ["09:00", "17:00"]
+  tue: ["09:00", "17:00"]
+  wed: ["09:00", "17:00"]
+  thu: ["09:00", "17:00"]
+  fri: ["09:00", "17:00"]
+  sat: ["09:00", "17:00"]
+  sun: ["09:00", "17:00"]
+
+# -----------------------------------------------------------------------------
+# Slot + capacity. Last-booking-at-17:00 means a 90-min slot ends at 18:30 —
+# confirm that's OK before school groups book the latest slot.
+# -----------------------------------------------------------------------------
+slot_duration_minutes: 60          # default 60-min slots (changed 2026-06-23)
+max_capacity_per_slot: 30         # TODO: confirm (skill rejects anything over this)
+
+# -----------------------------------------------------------------------------
+# Pricing. booking_flow.py does NOT use this yet (calendar only). Placeholder
+# values from template — replace with real per-pax SGD numbers before quoting.
+# -----------------------------------------------------------------------------
+pricing:
+  school:
+    per_pax: 8                     # TODO: confirm
+    currency: "SGD"
+    min_pax: 15                    # TODO: confirm
+  corporate:
+    per_pax: 15                    # TODO: confirm
+    currency: "SGD"
+    min_pax: 10                    # TODO: confirm
+  public:
+    per_pax: 12                    # TODO: confirm
+    currency: "SGD"
+    min_pax: 1
+
+# -----------------------------------------------------------------------------
+# Blackout dates (YYYY-MM-DD). Currently empty — add public holidays, SAAC
+# closures, private events as needed.
+# -----------------------------------------------------------------------------
+blackout_dates: []
+
+# -----------------------------------------------------------------------------
+# Deposit for booking confirmation. Required: true/false. UEN below is a
+# PLACEHOLDER — replace with SAAC's real PayNow UEN before the bot sends
+# payment instructions to any customer.
+# -----------------------------------------------------------------------------
+deposit:
+  required: true
+  amount_sgd: 50                  # TODO: confirm
+  deadline_hours_before_slot: 48  # TODO: confirm
+  instructions: "PayNow to UEN TODO_REAL_UEN. Reply with payment screenshot."  # TODO
