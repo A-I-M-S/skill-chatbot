@@ -16,8 +16,8 @@ bridge-dev: ## wa-bridge: tsx watch src/index.ts
 bridge-build: ## wa-bridge: tsc -> dist/
 	cd wa-bridge && npm run build
 
-bridge-start: ## wa-bridge: node dist/index.js
-	cd wa-bridge && node dist/index.js
+bridge-start: ## wa-bridge: node dist/src/index.js
+	cd wa-bridge && node dist/src/index.js
 
 bridge-test: ## wa-bridge: vitest run
 	cd wa-bridge && npm test
