@@ -30,6 +30,7 @@ dev = [
     "pytest-cov>=5.0.0",
     "ruff>=0.5.0",
     "types-python-dateutil>=2.9.0",
+    "respx>=0.21.0",
 ]
 
 [tool.hatch.build.targets.wheel]
