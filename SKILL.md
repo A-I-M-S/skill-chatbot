@@ -45,9 +45,18 @@ SKILL=$CHATBOT_REPO/skill-chatbot-scripts   # created by `skill init`
 
 ```bash
 python3 $SKILL/status.py
-# → {"bridge": "up"|"down", "orchestrator": "up"|"down", "session": "ok"|"qr_needed",
-#     "uptime_s": ..., "last_message_at": ..., "queue_depth": ...}
+# → one JSON line on stdout, e.g.:
+#    {"bridge": "up", "orchestrator": "up",
+#     "bridge_session": "ok"|"qr_needed"|"connecting",
+#     "bridge_queued_send": 0,
+#     "orchestrator_last_message_id": "..."}
 ```
+
+Under the hood this calls:
+- `GET http://127.0.0.1:7788/status` (wa-bridge) → `{session, last_message_at, queued_send, reconnecting, attempt, qr_needed_count}`
+- `GET http://127.0.0.1:7789/health` (orchestrator) → `{ok, db, last_processed_message_id}`
+
+Make sure the bridge has a `/status` endpoint (issue #2) and the orchestrator has a `/health` endpoint (issue #3) before relying on the script.
 
 ### Start / stop
 

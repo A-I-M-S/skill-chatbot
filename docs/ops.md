@@ -179,3 +179,67 @@ The `processed_messages` table records every processed `message_id`. If Baileys 
 sqlite3 orchestrator/state.sqlite "DELETE FROM processed_messages WHERE message_id = 'XXX';"
 # Replay the NDJSON line: re-append it to the inbox, the tailer will pick it up.
 ```
+
+
+## First-time setup
+
+```bash
+# 1. Clone + env
+git clone https://github.com/A-I-M-S/skill-chatbot ~/projects/skill-chatbot
+cd ~/projects/skill-chatbot
+cp .env.example .env
+# Fill in: QDRANT_*, INFERENCE_*, COMPOSIO_*, WA_BRIDGE_TOKEN, WA_NOTIFY, ADMIN_CONTACT_NUMBER, RAG_PHOTOS_DIR
+chmod 600 .env
+
+# 2. wa-bridge (Node)
+cd wa-bridge
+npm ci
+npm run build
+cd ..
+
+# 3. orchestrator (Python)
+cd orchestrator
+python3.11 -m venv .venv  # or python3.13 — whatever's on the box; requires-python = ">=3.11"
+. .venv/bin/activate
+pip install -e '.[dev]'
+cd ..
+
+# 4. Auth the bridge (scan QR from your WhatsApp app)
+cd wa-bridge
+npm run auth    # prints QR — scan from WhatsApp → Linked Devices → Link a Device
+cd ..
+
+# 5. Install the systemd --user units + logrotate (writes to /etc/logrotate.d/, needs sudo once)
+make install-svc
+
+# 6. Verify
+make status
+curl -s http://127.0.0.1:7788/status | jq
+curl -s http://127.0.0.1:7789/health | jq
+
+# 7. (Optional) Ingest the FAQ sources into the existing Qdrant collection
+make ingest-rules
+make ingest-file FILE=orchestrator/data/faq.md
+```
+
+> **Survive logout:** `loginctl enable-linger $USER` — without it, the user units stop when you log out.
+
+## Common incidents
+
+Twelve common incidents, each with the runbook command. (Detailed recovery procedures are in the previous section.)
+
+| # | Symptom | Quick check | Fix |
+|---|---|---|---|
+| 1 | Bridge down | `systemctl --user status skill-chatbot-bridge` | `systemctl --user restart skill-chatbot-bridge` |
+| 2 | Orchestrator down | `systemctl --user status skill-chatbot-orchestrator` | `systemctl --user restart skill-chatbot-orchestrator` |
+| 3 | Session lost / QR re-auth | `curl -s :7788/status` → `session: "qr_needed"`, `qr_needed_count >= 4` | `make bridge-auth` |
+| 4 | Composio 5xx for >2 min | `journalctl --user -u skill-chatbot-bridge --since '2 min ago' | grep -i composio` | Wait + retry; if >10 min, notify Boon (calendar entity drift) |
+| 5 | LLM 429 storm | `journalctl --user -u skill-chatbot-orchestrator | grep 429` | Backoff is automatic (1s/2s/4s); if it persists, lower the LLM-side rate limit |
+| 6 | Qdrant unreachable | `journalctl --user -u skill-chatbot-orchestrator | grep -i qdrant` | All FAQ queries fail; orchestrator hands off to admins via WA_NOTIFY |
+| 7 | Suspicious abusive user | check `wa-bridge/inbox.ndjson` for the sender | `python3 $SKILL/control.py block <phone>` (TODO #15) |
+| 8 | Customer asks for human mid-flow | (happen during book_new/edit/cancel) | `python3 $SKILL/control.py takeover <phone>` (TODO) — v1: tell user to call +65… via ADMIN_CONTACT_NUMBER |
+| 9 | State DB corruption | `sqlite3 orchestrator/state.sqlite ".schema"` errors | Stop orchestrator → `cp state.sqlite state.sqlite.corrupt.$(date +%s)` → `rm state.sqlite*` → restart |
+| 10 | Log disk full | `df -h /var/log/skill-chatbot` | `sudo find /var/log/skill-chatbot -name '*.gz' -mtime +90 -delete` |
+| 11 | Phone number changed (WhatsApp) | WhatsApp itself was changed | Stop bridge → `rm -rf wa-bridge/auth_info` → `make bridge-auth` with the new number |
+| 12 | Admin off-rotation (WA_NOTIFY empty) | `.env` check | Edit `.env` `WA_NOTIFY=...`, `systemctl --user restart skill-chatbot-orchestrator` |
+| 13 | Outbound queue stuck | `wc -l wa-bridge/queue/outbound.jsonl` | Inspect the failing line, `sed -i '$d' wa-bridge/queue/outbound.jsonl` to drop the bad entry, restart bridge |
