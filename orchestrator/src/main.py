@@ -229,11 +229,36 @@ def _dispatch_decision(
             confirm_reply=confirm,
         )
 
-    if decision.tool in ("book_edit", "book_cancel"):
-        # Full impl lands in #6 / #7
-        return (
-            "Got it — I'm pulling up your bookings. The booking system will "
-            "message you shortly with options."
+    if decision.tool == "book_edit":
+        from .flows import booking_edit
+
+        ps = state.get_phone_state(sender)
+        confirm = None
+        if ps and ps.get("flow") == "book_edit" and ps.get("pending_confirm"):
+            confirm = user_text
+        return booking_edit.handle_edit(
+            phone=sender,
+            user_text=user_text,
+            tool_args=decision.arguments,
+            state=state,
+            language=lang,
+            confirm_reply=confirm,
+        )
+
+    if decision.tool == "book_cancel":
+        from .flows import booking_edit
+
+        ps = state.get_phone_state(sender)
+        confirm = None
+        if ps and ps.get("flow") == "book_cancel" and ps.get("pending_confirm"):
+            confirm = user_text
+        return booking_edit.handle_cancel(
+            phone=sender,
+            user_text=user_text,
+            tool_args=decision.arguments,
+            state=state,
+            language=lang,
+            confirm_reply=confirm,
         )
 
     # Unknown tool — should never happen because the router validates, but
