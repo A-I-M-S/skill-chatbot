@@ -1,0 +1,61 @@
+# Env
+.env
+.env.local
+
+# Baileys auth (NEVER commit WhatsApp creds)
+wa-bridge/auth_info/
+wa-bridge/auth/
+wa-bridge/store/
+*.creds.json
+**/creds.json
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+env/
+
+# Node
+node_modules/
+dist/
+build/
+*.tsbuildinfo
+.npm/
+.eslintcache
+.parcel-cache/
+
+# SQLite state
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# NDJSON queue (transient inbox)
+inbox/*.ndjson
+queue/
