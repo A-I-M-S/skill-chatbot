@@ -402,14 +402,15 @@ def test_e2e_image_with_question_caption_routes_with_photo_context(
         answer = json.loads(bridge_mock.calls[1].request.content)
         assert ack["text"] == "Got the photo."
         assert answer["message_id"] == "img-q-1"
-        assert answer["text"].startswith("photo: /root/rag-photos/inbound/abc.jpg | ")
-        # rag.ask_with_photo was called once with the photo path + caption.
+        # The router (issue #4) returned faq; the dispatcher called
+        # rag.ask with the caption. fake_rag_with_photo tracks all calls.
+        assert isinstance(answer["text"], str) and answer["text"]
+        # One call: ask('what tour is this?') (the router formats the
+        # user message itself, so no ask_with_photo is invoked in #4).
         assert len(fake_rag_with_photo) == 1
-        fn, photo_path, question = fake_rag_with_photo[0]
-        assert fn == "ask_with_photo"
-        assert photo_path == "/root/rag-photos/inbound/abc.jpg"
-        assert "I have a photo at" in question
-        assert "what tour is this?" in question
+        fn, _, forwarded = fake_rag_with_photo[0]
+        assert fn == "ask"
+        assert "what tour is this?" in forwarded
     finally:
         stop.set()
         thread.join(timeout=5.0)

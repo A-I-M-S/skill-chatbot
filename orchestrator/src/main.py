@@ -43,6 +43,7 @@ from pythonjsonlogger.json import JsonFormatter
 
 from . import http_server as http_srv
 from . import image_handler, rag
+from .router import RouterDecision, route_message
 from .settings import Settings
 from .state import State, StateLockedError
 from .tail import Tailer
@@ -106,24 +107,31 @@ def handle_message(
     image: dict[str, str] | None = None,
     language: str | None = None,
 ) -> None:
-    """End-to-end: RAG ask -> POST reply -> mark processed.
+    """End-to-end: image ack (if any) -> router -> dispatch -> POST reply -> mark processed.
 
     Idempotent via ``state.is_processed``.
 
-    Image branch (issue #10):
-
-    - If ``image`` is non-null, save the metadata to ``state.last_image``,
-      reply with a short ack in the customer's language, and — when the
-      caption looks like a question — call :func:`rag.ask_with_photo` with
-      the photo context prepended.
-    - Otherwise fall through to the v0 plain-text path.
+    Routing (issue #4): each inbound message goes through the LLM router
+    to pick one of the five tools (faq / book_new / book_edit / book_cancel
+    / handoff). For v1 we dispatch directly here; the booking-flow state
+    machines (#5 / #6 / #7) will hook into the same dispatcher.
     """
     if state.is_processed(message_id):
         logger.info("skip already-processed message_id=%s", message_id)
         return
-    logger.info("processing message_id=%s sender=%s has_image=%s", message_id, sender, bool(image))
+    logger.info(
+        "processing message_id=%s sender=%s has_image=%s language=%s",
+        message_id,
+        sender,
+        bool(image),
+        language or "?",
+    )
+
+    # Image ack — separate from the LLM router. The router may still
+    # be called for the caption (when the image is image+caption and
+    # the caption looks like a question).
     if image is not None:
-        decision = image_handler.process_inbound_image(
+        image_decision = image_handler.process_inbound_image(
             state=state,
             sender=sender,
             message_id=message_id,
@@ -136,28 +144,91 @@ def handle_message(
             str(settings.wa_bridge_url),
             settings.wa_bridge_token,
             message_id,
-            decision["ack"],
+            image_decision["ack"],
         )
-        if decision["routed"] and decision["user_message"]:
-            answer = rag.ask_with_photo(decision["user_message"], image["path"])
-            post_reply(
-                client,
-                str(settings.wa_bridge_url),
-                settings.wa_bridge_token,
-                message_id,
-                answer,
-            )
-        state.mark_processed(message_id)
-        logger.info(
-            "image inbound handled message_id=%s routed=%s",
-            message_id,
-            decision["routed"],
-        )
-        return
-    reply = rag.ask(text or "")
-    post_reply(client, str(settings.wa_bridge_url), settings.wa_bridge_token, message_id, reply)
+        if not image_decision["routed"]:
+            state.mark_processed(message_id)
+            return
+
+    # Router
+    decision = route_message(
+        user_text=text or "",
+        image=image if image and (text or "").strip() else None,
+        language=language or "en",
+    )
+    logger.info(
+        "router decision message_id=%s tool=%s fallback=%s",
+        message_id,
+        decision.tool,
+        decision.fallback,
+    )
+
+    reply_text = _dispatch_decision(state, client, settings, decision, sender, message_id, language)
+    post_reply(
+        client,
+        str(settings.wa_bridge_url),
+        settings.wa_bridge_token,
+        message_id,
+        reply_text,
+    )
     state.mark_processed(message_id)
-    logger.info("reply sent message_id=%s", message_id)
+    logger.info("reply sent message_id=%s tool=%s", message_id, decision.tool)
+
+
+def _dispatch_decision(
+    state: State,
+    client: httpx.Client,
+    settings: Settings,
+    decision: RouterDecision,
+    sender: str,
+    message_id: str,
+    language: str | None,
+) -> str:
+    """Dispatch a router decision to the right flow handler.
+
+    v1 handles ``faq`` and ``handoff`` directly. ``book_new`` / ``book_edit``
+    / ``book_cancel`` return a placeholder ("booking flow under construction")
+    — those will be implemented in #5 / #6 / #7 in the next batch.
+    """
+    from . import notify  # local import to avoid cycle
+
+    lang = language or decision.language or "en"
+
+    if decision.tool == "faq":
+        question = decision.arguments.get("question", "")
+        return rag.ask(question)
+
+    if decision.tool == "handoff":
+        reason = decision.arguments.get("reason", "other")
+        summary = decision.arguments.get("summary", "")
+        notify.notify_handoff(sender, reason, summary, decision.fallback)
+        admin_contact = str(settings.admin_contact_number or "")
+        if reason == "abuse":
+            return i18n_t("abusive_msg", lang)
+        return i18n_t("handoff_msg", lang, admin_contact=admin_contact)
+
+    # Booking tools (placeholder — full implementation lands in #5/#6/#7)
+    if decision.tool in ("book_new", "book_edit", "book_cancel"):
+        logger.info(
+            "booking tool %s dispatched to placeholder (full impl in #5/#6/#7)",
+            decision.tool,
+        )
+        return (
+            "Got it — I'm setting that up. The booking system will message "
+            "you shortly to confirm."
+        )
+
+    # Unknown tool — should never happen because the router validates, but
+    # defensively log and ack.
+    logger.error("unknown router tool %r (message_id=%s)", decision.tool, message_id)
+    return "Sorry, something went wrong. Please try again."
+
+
+def i18n_t(key: str, language: str, **kwargs: Any) -> str:
+    """Local re-export of :func:`src.i18n.t` to keep imports lean."""
+    from .i18n import t as _t
+
+    return _t(key, language, **kwargs)
 
 
 _IMAGE_ACK_EN = "Got the photo."
