@@ -191,8 +191,6 @@ def _dispatch_decision(
     / ``book_cancel`` return a placeholder ("booking flow under construction")
     — those will be implemented in #5 / #6 / #7 in the next batch.
     """
-    from . import notify  # local import to avoid cycle
-
     lang = language or decision.language or "en"
 
     if decision.tool == "faq":
@@ -200,13 +198,15 @@ def _dispatch_decision(
         return rag.ask(question)
 
     if decision.tool == "handoff":
-        reason = decision.arguments.get("reason", "other")
-        summary = decision.arguments.get("summary", "")
-        notify.notify_handoff(sender, reason, summary, decision.fallback)
-        admin_contact = str(settings.admin_contact_number or "")
-        if reason == "abuse":
-            return i18n_t("abusive_msg", lang)
-        return i18n_t("handoff_msg", lang, admin_contact=admin_contact)
+        from .flows import handoff as handoff_flow
+
+        return handoff_flow.handle(
+            sender=sender,
+            reason=str(decision.arguments.get("reason", "other")),
+            summary=str(decision.arguments.get("summary", "")),
+            language=lang,
+            is_fallback=decision.fallback,
+        )
 
     # Booking tools
     if decision.tool == "book_new":
