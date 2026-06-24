@@ -332,19 +332,15 @@ def _build_new_summary(draft: dict[str, Any], language: str) -> str:
 
 
 def _edit_confirm_prompt(old: str, new: str, language: str) -> str:
-    return t("edit_one_match", language, event=old) if False else _confirm_template(old, new, language)
+    return t("edit_confirm", language, old=old, new=new)
 
 
 def _confirm_template(old: str, new: str, language: str) -> str:
-    if language.lower().startswith("zh"):
-        return f"我将把 **{old}** 改为 **{new}**。回复 **YES** 确认。"
-    return f"I'll change **{old}** → **{new}**. Reply **YES** to confirm."
+    return t("edit_confirm", language, old=old, new=new)
 
 
 def _edit_ask_field(language: str) -> str:
-    if language.lower().startswith("zh"):
-        return "您想修改哪一项？日期、时间，还是人数？"
-    return "Which would you like to change — date, time, or pax?"
+    return t("edit_ask_field", language)
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -476,9 +472,7 @@ def _handle_cancel_confirm(
 
 
 def _cancel_confirm_prompt(summary: str, language: str) -> str:
-    if language.lower().startswith("zh"):
-        return f"我将取消 **{summary}**。此操作不可撤销。回复 **YES** 确认，或回复其他内容保留预约。"
-    return f"I'll cancel **{summary}**. This is irreversible. Reply **YES** to confirm, or anything else to keep the booking."
+    return t("cancel_confirm", language, event_summary=summary)
 
 
 __all__ = ["handle_edit", "handle_cancel", "BOOKING_HORIZON_DAYS"]

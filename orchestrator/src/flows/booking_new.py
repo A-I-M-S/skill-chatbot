@@ -288,38 +288,16 @@ def _handle_confirm(
 
 
 def _ask_for(field: str, language: str) -> str:
-    prompts = {
-        "date": {
-            "en": "What date would you like? (YYYY-MM-DD)",
-            "zh": "请问您想预约哪一天？（YYYY-MM-DD）",
-        },
-        "time": {
-            "en": "What time? (HH:MM, 24-hour)",
-            "zh": "请问几点？（24 小时制，HH:MM）",
-        },
-        "pax": {
-            "en": "How many people?",
-            "zh": "请问有多少人？",
-        },
-        "contact_name": {
-            "en": "Contact name?",
-            "zh": "联系人姓名？",
-        },
-        "contact": {
-            "en": "Contact email or phone? (at least one)",
-            "zh": "联系邮箱或电话？（至少填一个）",
-        },
-        "org": {
-            "en": "Organisation or school? (optional — type 'skip' to omit)",
-            "zh": "学校或单位？（可选 — 输入「跳过」即可）",
-        },
-        "notes": {
-            "en": "Any notes? (optional — type 'skip' to omit)",
-            "zh": "备注？（可选 — 输入「跳过」即可）",
-        },
-    }
-    p = prompts.get(field, prompts["date"])
-    return p.get("zh" if language.lower().startswith("zh") else "en", p["en"])
+    key = {
+        "date": "ask_date",
+        "time": "ask_time",
+        "pax": "ask_pax",
+        "contact_name": "ask_contact_name",
+        "contact": "ask_contact",
+        "org": "ask_org",
+        "notes": "ask_notes",
+    }.get(field, "ask_date")
+    return t(key, language)
 
 
 def _field_for_error(err: str, draft: dict[str, Any]) -> str | None:
