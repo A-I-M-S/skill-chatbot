@@ -1,5 +1,6 @@
 import makeWASocket, {
   DisconnectReason,
+  downloadMediaMessage,
   type WASocket,
   type UserFacingSocketConfig,
   type ConnectionState,
@@ -14,6 +15,7 @@ import {
   buildInboxLine,
   shouldProcessMessage,
 } from "./inbox.js";
+import { downloadImageFromMessage, type DownloadImageResult } from "./image.js";
 
 export type SessionState = "ok" | "qr_needed" | "connecting";
 
@@ -25,6 +27,10 @@ export type SocketDeps = {
   onState?: (s: SessionState) => void;
   onMessageId?: (id: string) => void;
   onLastMessageAt?: (ts: string) => void;
+  photosDir?: string;
+  maxImageBytes?: number;
+  imageDownloader?: (msg: WAMessage) => Promise<Buffer | undefined>;
+  onImageRejected?: (msg: WAMessage, reason: "oversize" | "missing_mimetype" | "download_failed" | "write_failed" | "no_image") => void;
 };
 
 export type SocketFactory = (cfg: UserFacingSocketConfig) => WASocket;
@@ -138,6 +144,43 @@ export function createSocket(opts: ConnectOptions): SocketController {
         } catch (e) {
           logger.warn({ err: String(e) }, "buildInboxLine failed");
           continue;
+        }
+        if (line.image && opts.photosDir) {
+          const result = await downloadImageFromMessage({
+            msg,
+            photosDir: opts.photosDir,
+            maxBytes: opts.maxImageBytes,
+            logger: opts.logger,
+            downloader: opts.imageDownloader
+              ?? (currentSock
+                ? async (m) => {
+                    const r = await downloadMediaMessage(
+                      m,
+                      "buffer",
+                      {},
+                      {
+                        logger: opts.logger as never,
+                        reuploadRequest: currentSock!.updateMediaMessage as never,
+                      }
+                    );
+                    return r as Buffer;
+                  }
+                : undefined),
+          });
+          if (result.ok) {
+            line.image = {
+              ...line.image,
+              path: result.meta.path,
+              sha256: result.meta.sha256,
+            };
+          } else {
+            opts.onImageRejected?.(msg, result.reason);
+            logger.warn(
+              { from: line.from, message_id: line.message_id, reason: result.reason },
+              "image rejected, dropping image"
+            );
+            line.image = null;
+          }
         }
         try {
           await opts.appendInbox(line);

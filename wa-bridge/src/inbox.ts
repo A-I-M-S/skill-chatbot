@@ -1,6 +1,7 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { WAMessage } from "@whiskeysockets/baileys";
+import { filenameForMessage } from "./image.js";
 
 export type InboxImage = {
   path: string;
@@ -48,7 +49,7 @@ function extractImage(msg: WAMessage): InboxImage | null {
   return {
     path: "",
     sha256: "",
-    filename: "image.jpg",
+    filename: filenameForMessage(img.mimetype),
   };
 }
 

@@ -47,6 +47,8 @@ export async function run(deps: RunDeps = {}): Promise<RunningBridge> {
     printQR,
     maxBackoffMs: env.WA_RECONNECT_MAX_BACKOFF_MS,
     giveupQrCount: env.WA_RECONNECT_GIVEUP_QR,
+    photosDir: env.RAG_PHOTOS_DIR,
+    maxImageBytes: env.MAX_IMAGE_BYTES,
   });
 
   const sender = makeBaileysSender(async (jid, content) => {

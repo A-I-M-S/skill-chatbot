@@ -18,6 +18,12 @@ NDJSON contract v1 (from wa-bridge issue #2; no upstream doc yet — pinned here
 
 This is intentionally bare — no LLM router, no flows, no booking (issues
 #4-#8). The only goal of v0 is to prove the loop closes end-to-end.
+
+Image branch (issue #10): when ``image`` is non-null, ``handle_message``
+saves the metadata to :class:`src.state.State` and acks
+(``Got the photo.`` / ``收到图片了。``). If the caption looks like a
+question, the photo context is prepended to the user message and the
+router/RAG is called with :func:`src.rag.ask_with_photo`.
 """
 
 from __future__ import annotations
@@ -36,7 +42,7 @@ import httpx
 from pythonjsonlogger.json import JsonFormatter
 
 from . import http_server as http_srv
-from . import rag
+from . import image_handler, rag
 from .settings import Settings
 from .state import State, StateLockedError
 from .tail import Tailer
@@ -97,19 +103,72 @@ def handle_message(
     message_id: str,
     sender: str,
     text: str,
+    image: dict[str, str] | None = None,
+    language: str | None = None,
 ) -> None:
     """End-to-end: RAG ask -> POST reply -> mark processed.
 
     Idempotent via ``state.is_processed``.
+
+    Image branch (issue #10):
+
+    - If ``image`` is non-null, save the metadata to ``state.last_image``,
+      reply with a short ack in the customer's language, and — when the
+      caption looks like a question — call :func:`rag.ask_with_photo` with
+      the photo context prepended.
+    - Otherwise fall through to the v0 plain-text path.
     """
     if state.is_processed(message_id):
         logger.info("skip already-processed message_id=%s", message_id)
         return
-    logger.info("processing message_id=%s sender=%s", message_id, sender)
+    logger.info("processing message_id=%s sender=%s has_image=%s", message_id, sender, bool(image))
+    if image is not None:
+        decision = image_handler.process_inbound_image(
+            state=state,
+            sender=sender,
+            message_id=message_id,
+            image=image,
+            caption=text,
+            language=language,
+        )
+        post_reply(
+            client,
+            str(settings.wa_bridge_url),
+            settings.wa_bridge_token,
+            message_id,
+            decision["ack"],
+        )
+        if decision["routed"] and decision["user_message"]:
+            answer = rag.ask_with_photo(decision["user_message"], image["path"])
+            post_reply(
+                client,
+                str(settings.wa_bridge_url),
+                settings.wa_bridge_token,
+                message_id,
+                answer,
+            )
+        state.mark_processed(message_id)
+        logger.info(
+            "image inbound handled message_id=%s routed=%s",
+            message_id,
+            decision["routed"],
+        )
+        return
     reply = rag.ask(text or "")
     post_reply(client, str(settings.wa_bridge_url), settings.wa_bridge_token, message_id, reply)
     state.mark_processed(message_id)
     logger.info("reply sent message_id=%s", message_id)
+
+
+_IMAGE_ACK_EN = "Got the photo."
+_IMAGE_ACK_ZH = "收到图片了。"
+
+
+def _image_ack(language: str) -> str:
+    """Localised image ack. v0 ships EN + 中文; default is EN."""
+    if language.lower().startswith("zh"):
+        return _IMAGE_ACK_ZH
+    return _IMAGE_ACK_EN
 
 
 def offset_file_for(state_db: Path) -> Path:
@@ -142,6 +201,7 @@ def run_loop(
                     message_id=msg.message_id,
                     sender=msg.sender,
                     text=msg.text,
+                    image=msg.image,
                 )
                 if stop.is_set():
                     break

@@ -17,6 +17,8 @@ const EnvSchema = z.object({
   WA_RECONNECT_GIVEUP_QR: z.coerce.number().int().nonnegative().default(4),
   WA_BRIDGE_LOG: z.string().optional(),
   NODE_ENV: z.string().optional(),
+  RAG_PHOTOS_DIR: z.string().min(1).default("/root/rag-photos"),
+  MAX_IMAGE_BYTES: z.coerce.number().int().positive().default(10 * 1024 * 1024),
 });
 
 export type Env = z.infer<typeof EnvSchema>;
