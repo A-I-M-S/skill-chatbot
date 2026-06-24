@@ -203,3 +203,213 @@
 | 10 | Mid-flow language switch | ✓ | ✓ | `book_new` |
 
 **Total: 10 dialogues × 2 languages = 20 entries** (acceptance: ≥ 8 × 2 = 16).
+
+---
+
+## Extended dialogue set (issue #15)
+
+Eight flows, each shown in both EN and 中文. These are the canonical
+test inputs for `make smoke` and the in-process e2e suite.
+
+### 1. FAQ
+
+**EN**
+```
+Customer: What time do you open?
+Bot: We're open Saturday and Sunday 09:00–17:00. Last tour starts at 16:00.
+```
+
+**中文**
+```
+客户: 几点开门？
+机器人: 我们的营业时间是周六和周日 09:00–17:00。最后一团 16:00 出发。
+```
+
+### 2. New booking — happy path
+
+**EN**
+```
+Customer: Can we book 30 kids on 15 Aug 2026 at 10:30?
+Bot: Got it — 30 pax on 2026-08-15. I just need a contact email to lock it in.
+Customer: jane@school.cn
+Bot: Here's what I'll book: 2026-08-15 10:30, 30 pax, contact jane@school.cn. Reply YES to confirm.
+Customer: YES
+Bot: Booked. Confirmation #AQMk…1234.
+```
+
+**中文**
+```
+客户: 我们要预约 8月15日 10:30，30 位小五学生。
+机器人: 好的，30 位，2026 年 8 月 15 日。请问联系邮箱？
+客户: zhang@school.cn
+机器人: 预约信息：2026 年 8 月 15 日 10:30，30 位，联系人 zhang@school.cn。回复 YES 确认。
+客户: 是
+机器人: 已预约。编号 #AQMk…5678.
+```
+
+### 3. New booking — unavailable slot
+
+**EN**
+```
+Customer: 12 Aug 2026 09:00 for 50 people.
+Bot: Sorry, 12 Aug 09:00 is at capacity. The next free slot that day is 14:30. Want me to try that, or hand this over to the team?
+```
+
+**中文**
+```
+客户: 8月12日 09:00，50 位。
+机器人: 抱歉，8 月 12 日 09:00 已满。当天还有 14:30。要试 14:30，还是转给团队？
+```
+
+### 4. New booking — full multi-turn
+
+**EN**
+```
+Customer: I want to book a tour.
+Bot: What date would you like? (YYYY-MM-DD)
+Customer: 15 Aug
+Bot: What time? (HH:MM, 24-hour)
+Customer: 10:30
+Bot: How many people?
+Customer: 30
+Bot: Contact email or phone? (at least one)
+Customer: jane@school.cn
+Bot: I'll book: 2026-08-15 10:30, 30 pax, contact jane@school.cn. Reply YES to confirm.
+Customer: YES
+Bot: Booked. Confirmation #AQMk…. Deposit SGD 200 due 48h before.
+```
+
+**中文**
+```
+客户: 我要预约参观。
+机器人: 请问您想预约哪一天？（YYYY-MM-DD）
+客户: 8月15日
+机器人: 请问几点？（24 小时制，HH:MM）
+客户: 10:30
+机器人: 请问有多少人？
+客户: 30
+机器人: 联系邮箱或电话？（至少填一个）
+客户: zhang@school.cn
+机器人: 预约信息：2026-08-15 10:30，30 位，联系人 zhang@school.cn。回复 YES 确认。
+客户: 是
+机器人: 已预约。编号 #AQMk…. 定金 SGD 200，需在参观前 48 小时支付。
+```
+
+### 5. Edit booking
+
+**EN**
+```
+Customer: I need to change my booking.
+Bot: I found this booking on your number: 2026-08-15 10:30, 30 pax. Reply YES to edit, or NO to leave it as-is.
+Customer: YES
+Bot: Which would you like to change — date, time, or pax?
+Customer: 14:30
+Bot: I'll change 2026-08-15 10:30 → 2026-08-15 14:30. Reply YES to confirm.
+Customer: YES
+Bot: Updated. New confirmation #AQMk…9876.
+```
+
+**中文**
+```
+客户: 我想改预约时间。
+机器人: 我在您的号码下找到这个预约：2026-08-15 10:30, 30 位。回复 YES 修改，回复 NO 保持不变。
+客户: 是
+机器人: 您想修改哪一项？日期、时间，还是人数？
+客户: 14:30
+机器人: 我将把 2026-08-15 10:30 改为 2026-08-15 14:30。回复 YES 确认。
+客户: 是
+机器人: 已修改。新编号 #AQMk…9876。
+```
+
+### 6. Cancel booking
+
+**EN**
+```
+Customer: Please cancel our tour.
+Bot: I found this booking on your number: 2026-08-15 10:30, 30 pax. I'll cancel this. This is irreversible. Reply YES to confirm.
+Customer: YES
+Bot: Cancelled. Confirmation #AQMk…1234.
+```
+
+**中文**
+```
+客户: 请帮我取消预约。
+机器人: 我在您的号码下找到这个预约：2026-08-15 10:30, 30 位。我将取消这个预约。此操作不可撤销。回复 YES 确认。
+客户: 是
+机器人: 已取消。编号 #AQMk…1234。
+```
+
+### 7. Handoff — refund
+
+**EN**
+```
+Customer: I want a refund.
+Bot: I've flagged this for the team — they'll be in touch shortly. For immediate help, contact +6591234567.
+```
+
+**中文**
+```
+客户: 我要退款。
+机器人: 已经转给团队处理，他们会尽快联系您。如需紧急协助，请拨打 +6591234567。
+```
+
+### 8. Handoff — abuse
+
+**EN**
+```
+Customer: <abusive message>
+Bot: I'm not able to help with that. The team has been notified.
+[admin receives: 🚨 [HANDOFF] ABUSE / Customer: +6590000099 / Message: <abusive content>]
+```
+
+**中文**
+```
+客户: <辱骂内容>
+机器人: 抱歉，我无法处理。已通知团队。
+[管理员收到: 🚨 [转人工] 辱骂 / 客户: +6590000099 / 内容: <辱骂内容>]
+```
+
+### 9. Image question
+
+**EN**
+```
+Customer: <sends photo of a goat> what breed is this?
+Bot: Got the photo. I'll look it up.
+Bot: [after rag_qdrant.ask_with_photo returns an answer] That's a Saanen — common dairy breed at SAAC FARM.
+```
+
+**中文**
+```
+客户: <发送山羊图片> 这是什么品种？
+机器人: 收到图片了。我这边有一张图片，路径 /p/goat.jpg。
+机器人: [rag_qdrant.ask_with_photo 返回结果] 这是萨能奶山羊——SAAC FARM 的常见奶用品种。
+```
+
+### 10. Mid-flow language switch
+
+**EN → 中文**
+```
+Customer: Can I book for tomorrow?
+Bot: What time? (HH:MM, 24-hour)
+Customer: 下午3点
+Bot: 请问几点？（24 小时制，HH:MM）
+Customer: 15:00
+Bot: How many people?
+Customer: 10 位
+Bot: 请问有多少人？
+Customer: 10
+Bot: Contact email or phone? (at least one)
+Customer: me@example.com
+Bot: I'll book: <date> 15:00, 10 pax, contact me@example.com. Reply YES to confirm.
+```
+
+**中文 → EN**
+```
+客户: 我要预约明天参观。
+机器人: 请问您想预约哪一天？（YYYY-MM-DD）
+客户: tomorrow
+Bot: What date would you like? (YYYY-MM-DD)
+Customer: 2026-08-25
+Bot: I'll book: 2026-08-25 <time>, <pax>, contact <email>. Reply YES to confirm.
+```
+
