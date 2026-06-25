@@ -168,6 +168,7 @@ make orch-lint
 
 See `docs/ops.md` for systemd units, log paths, restart, and the QR re-auth flow.
 
+<<<<<<< HEAD
 ## Migration plan (rag-qdrant + farm-tour-booking → skill-chatbot)
 
 Tracking issue is the epic — open it for the full plan and dependency graph. Two reference docs gate the cutover:
@@ -176,6 +177,11 @@ Tracking issue is the epic — open it for the full plan and dependency graph. T
 - [`docs/cutover.md`](docs/cutover.md) — minute-by-minute cutover sequence (T+0 → T+30), rollback path (`<15 min`, zero data loss), +24h/+7d monitoring checklist.
 
 Idempotent retire script: `scripts/retire-old-skills.sh` (removes the rag-qdrant skill dir and quarantines any leftover `farm-tour-booking-*` proposals).
+=======
+## Cutover smoke test
+
+Before retiring `rag-qdrant` + `farm-tour-booking` (issue #36), run the end-to-end smoke test against the test WhatsApp number. The full 14-case plan + report template lives in [`docs/smoke-test.md`](docs/smoke-test.md). 7 customer-side cases (RAG query, new booking, edit, cancel, pricing, out-of-scope) + 7 admin-side cases (ACL show, bookings prompt + list, ingest, config patch + reject, non-admin refusal).
+>>>>>>> c7e5ff8 (docs(smoke): 14-case cutover smoke test plan + report template (#33))
 
 ## Status
 
