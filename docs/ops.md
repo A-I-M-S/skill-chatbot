@@ -243,3 +243,30 @@ Twelve common incidents, each with the runbook command. (Detailed recovery proce
 | 11 | Phone number changed (WhatsApp) | WhatsApp itself was changed | Stop bridge → `rm -rf wa-bridge/auth_info` → `make bridge-auth` with the new number |
 | 12 | Admin off-rotation (WA_NOTIFY empty) | `.env` check | Edit `.env` `WA_NOTIFY=...`, `systemctl --user restart skill-chatbot-orchestrator` |
 | 13 | Outbound queue stuck | `wc -l wa-bridge/queue/outbound.jsonl` | Inspect the failing line, `sed -i '$d' wa-bridge/queue/outbound.jsonl` to drop the bad entry, restart bridge |
+
+## systemd units (system-level, production) — issue #32
+
+`/etc/systemd/system/skill-chatbot-wa-bridge.service` + `/etc/systemd/system/skill-chatbot-orchestrator.service`. Installed by `scripts/install-systemd-system.sh`. Run-as user `skill-chatbot`. Env from `/etc/skill-chatbot.env` (mode 600). Hardening on (`ProtectSystem=strict`, `ProtectHome=yes`, `NoNewPrivileges=yes`).
+
+State + log directories are managed by systemd (`StateDirectory=` + `LogsDirectory=`):
+
+- `/var/lib/skill-chatbot/wa-bridge/auth/` — Baileys session (survives restart)
+- `/var/lib/skill-chatbot/orchestrator/state.sqlite` — orchestrator state
+- `/var/log/skill-chatbot/` — journald-mirrored logs
+
+Re-auth flow when the Baileys session drops:
+
+```bash
+sudo journalctl -u skill-chatbot-wa-bridge -f   # QR prints to journal
+# scan from WhatsApp app; on success, session re-persists to /var/lib
+```
+
+Restore from nightly snapshot (see issue #34):
+
+```bash
+# list snapshots
+curl -sH "api-key: $QDRANT_API_KEY" "$QDRANT_URL/collections/$QDRANT_COLLECTION/snapshots" | jq
+
+# Qdrant's restore flow is at https://qdrant.tech/documentation/concepts/snapshots/
+# (out of scope for this repo — runbook only)
+```

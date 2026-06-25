@@ -1,0 +1,31 @@
+[Unit]
+Description=skill-chatbot WhatsApp bridge (Baileys, Node)
+Documentation=https://github.com/A-I-M-S/skill-chatbot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=skill-chatbot
+Group=skill-chatbot
+WorkingDirectory=/opt/skill-chatbot/wa-bridge
+EnvironmentFile=/etc/skill-chatbot.env
+ExecStart=/usr/bin/env node /opt/skill-chatbot/wa-bridge/dist/src/index.js
+# Restart aggressively — when Baileys auth drops we want a fresh process
+# to re-prompt for QR (journalctl will surface the QR prompt).
+Restart=always
+RestartSec=5
+# State + logs (StateDirectory + LogsDirectory are auto-created by systemd).
+StateDirectory=skill-chatbot/wa-bridge
+LogsDirectory=skill-chatbot/wa-bridge
+LogsDirectoryMode=0750
+# Hardening: don't traverse the world-writable dirs we don't need.
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+NoNewPrivileges=yes
+# Baileys writes to WorkingDirectory; allow that explicitly.
+ReadWritePaths=/opt/skill-chatbot/wa-bridge /var/lib/skill-chatbot/wa-bridge
+
+[Install]
+WantedBy=multi-user.target

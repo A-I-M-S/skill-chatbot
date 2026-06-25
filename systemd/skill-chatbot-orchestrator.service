@@ -1,0 +1,30 @@
+[Unit]
+Description=skill-chatbot orchestrator (Python, FastAPI + LLM router)
+Documentation=https://github.com/A-I-M-S/skill-chatbot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=skill-chatbot
+Group=skill-chatbot
+WorkingDirectory=/opt/skill-chatbot/orchestrator
+EnvironmentFile=/etc/skill-chatbot.env
+ExecStart=/opt/skill-chatbot/venv/bin/python -m src.main
+Restart=always
+RestartSec=5
+# State + logs (auto-created by systemd).
+StateDirectory=skill-chatbot/orchestrator
+LogsDirectory=skill-chatbot/orchestrator
+LogsDirectoryMode=0750
+# Hardening.
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+NoNewPrivileges=yes
+# Orchestrator reads working dir + writes the SQLite state DB + reads
+# the booking_rules.yaml file (overridable via BOOKING_RULES_PATH).
+ReadWritePaths=/opt/skill-chatbot/orchestrator /var/lib/skill-chatbot/orchestrator /etc/skill-chatbot
+
+[Install]
+WantedBy=multi-user.target
