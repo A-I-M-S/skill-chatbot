@@ -21,6 +21,7 @@ dependencies = [
     "python-dateutil>=2.9.0",
     "pygtail>=0.14.0",
     "python-json-logger>=2.0.7",
+    "ruamel.yaml>=0.18.0",
 ]
 
 [project.optional-dependencies]

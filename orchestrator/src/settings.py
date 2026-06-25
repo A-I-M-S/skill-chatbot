@@ -46,6 +46,9 @@ class Settings:
     wa_bridge_token: str
     log_level: str
     booking_horizon_days: int = 90
+    admin_http_token: str = ""
+    admin_telegram_ids: tuple[int, ...] = ()
+    booking_rules_path: Path | None = None
 
     @classmethod
     def from_env(cls, env_file: str | os.PathLike[str] | None = None) -> Settings:
@@ -68,6 +71,11 @@ class Settings:
             booking_horizon_days=_coerce_int(
                 "BOOKING_HORIZON_DAYS", env.get("BOOKING_HORIZON_DAYS"), 90
             ),
+            admin_http_token=env.get("ADMIN_HTTP_TOKEN", ""),
+            admin_telegram_ids=_parse_admin_telegram_ids(env.get("ADMIN_TELEGRAM_IDS")),
+            booking_rules_path=(
+                Path(env["BOOKING_RULES_PATH"]) if env.get("BOOKING_RULES_PATH") else None
+            ),
         )
 
     @staticmethod
@@ -82,8 +90,18 @@ class Settings:
             wa_bridge_token="test-token",
             log_level="INFO",
             booking_horizon_days=90,
+            admin_http_token="",
+            admin_telegram_ids=(),
+            booking_rules_path=None,
         )
         defaults.update({k: v for k, v in mapping.items() if v is not None})
+        admin_ids = defaults["admin_telegram_ids"]
+        if isinstance(admin_ids, (str, bytes)):
+            admin_ids = _parse_admin_telegram_ids(
+                admin_ids.decode() if isinstance(admin_ids, bytes) else admin_ids
+            )
+        elif not isinstance(admin_ids, tuple):
+            admin_ids = tuple(int(x) for x in admin_ids)
         return Settings(
             inbox_path=Path(defaults["inbox_path"]),
             orchestrator_db=Path(defaults["orchestrator_db"]),
@@ -95,7 +113,37 @@ class Settings:
             wa_bridge_token=str(defaults["wa_bridge_token"]),
             log_level=str(defaults["log_level"]),
             booking_horizon_days=int(defaults["booking_horizon_days"]),
+            admin_http_token=str(defaults["admin_http_token"]),
+            admin_telegram_ids=admin_ids,
+            booking_rules_path=(
+                Path(defaults["booking_rules_path"]) if defaults.get("booking_rules_path") else None
+            ),
         )
+
+
+def _parse_admin_telegram_ids(raw: str | None) -> tuple[int, ...]:
+    """Parse ``ADMIN_TELEGRAM_IDS`` (comma-separated ints) into a tuple.
+
+    Empty / unset → empty tuple. Bad entries are skipped with a soft
+    warning (rather than raising at boot) so a single typo in the env
+    doesn't take the orchestrator down.
+    """
+    if not raw:
+        return ()
+    out: list[int] = []
+    for token in raw.split(","):
+        token = token.strip()
+        if not token:
+            continue
+        try:
+            out.append(int(token))
+        except ValueError:
+            import logging
+
+            logging.getLogger(__name__).warning(
+                "ADMIN_TELEGRAM_IDS: skipping non-integer token %r", token
+            )
+    return tuple(out)
 
 
 __all__ = ["Settings"]
