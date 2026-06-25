@@ -73,25 +73,15 @@ logs: ## journalctl --user -f for both units
 snapshot-upstream: ## refresh references/upstream/ snapshots
 	bash scripts/snapshot-upstream.sh
 
-<<<<<<< HEAD
 snapshot-test: ## bash tests/test_qdrant_snapshot.sh (no Qdrant needed)
 	bash tests/test_qdrant_snapshot.sh
 
 snapshot-now: ## run qdrant-snapshot.sh once with current env
 	bash scripts/qdrant-snapshot.sh
-=======
+
 baseline-capture: ## one-shot pre-cutover baseline capture (issue #35)
 	@ENV_FILE="$${ENV_FILE:-/etc/skill-chatbot.env}" OUT="migration-baseline/$$(date -u +%Y%m%dT%H%M%SZ).md" bash scripts/capture-baseline.sh
 	@echo "→ commit the file under migration-baseline/ in the repo"
 
 baseline-test: ## bash tests/test_capture_baseline.sh
 	bash tests/test_capture_baseline.sh
->>>>>>> 4020fc5 (feat(baseline): pre-cutover state capture script (#35))
-
-issues: ## list GitHub issues labelled phase:0-bootstrap
-	gh issue list --repo A-I-M-S/skill-chatbot --label phase:0-bootstrap
-
-clean: ## remove build / venv / node_modules / .pytest_cache artifacts
-	rm -rf wa-bridge/dist wa-bridge/node_modules \
-	       orchestrator/.venv orchestrator/build orchestrator/*.egg-info \
-	       orchestrator/.pytest_cache orchestrator/.ruff_cache orchestrator/.mypy_cache
