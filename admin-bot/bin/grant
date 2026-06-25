@@ -1,0 +1,44 @@
+#!/usr/bin/env python3
+"""`/grant <source> <id|@user>` — admin-bot side.
+
+Calls ``POST /admin/grant`` on the orchestrator.
+"""
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from _lib import api_call, die, load_env, parse_sender_id, require_admin  # noqa: E402
+
+
+def main(argv: list[str]) -> int:
+    sender_id, rest = parse_sender_id(argv)
+    if len(rest) < 2:
+        die("Usage: grant --sender-id <int> <source> <telegram-id|@username>")
+    source, who = rest[0], rest[1]
+
+    settings = load_env()
+    require_admin(sender_id, settings)
+
+    if who.startswith("@"):
+        die("username-based grant is not yet implemented server-side; pass a numeric telegram id")
+
+    try:
+        tid = int(who.lstrip("+"))
+    except ValueError:
+        die(f"telegram id must be an integer (got {who!r})")
+
+    status, body = api_call(
+        settings, sender_id, "POST", "grant",
+        body={"source": source, "telegram_id": tid},
+    )
+    if status != 200 or not isinstance(body, dict):
+        die(f"Grant failed ({status}): {body}", code=1)
+    print(f"Granted `{tid}` access to `{source}`.")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

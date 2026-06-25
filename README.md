@@ -102,9 +102,14 @@ skill-chatbot/
     ├── state.sqlite      # runtime, gitignored
     ├── src/              # main, tail, state, http, router, inference, rag,
     │                     # booking_subprocess, i18n, language, notify, enums,
-    │                     # prompts/, flows/
+    │                     # admin/, prompts/, flows/
     ├── scripts/          # smoke, ingest_rules, ingest_file, reindex
     └── tests/
+├── admin-bot/           # thin Telegram-side admin skill (issue #31)
+│   ├── SKILL.md
+│   ├── bin/             # /ingest /grant /revoke /show /bookings /config
+│   ├── tests/
+│   └── .env.example
 ```
 
 ## Reuses (do not reinvent)
@@ -125,6 +130,7 @@ Refresh the snapshots with `bash scripts/snapshot-upstream.sh`.
 - **rag-qdrant** — `/root/.openclaw/skills/rag-qdrant/` · `from rag_qdrant import ask`
 - **farm-tour-booking** — `/root/.openclaw/workspace/admin/skills/farm-tour-booking/` · invoked as `python3 scripts/booking_flow.py …`
 - **booking_rules.yaml** — `config/booking_rules.yaml` in farm-tour-booking; source of truth for hours, capacity, pricing, blackout dates
+- **admin-bot** (Telegram admin) — symlink `admin-bot/` into `~/.openclaw/skills/skill-chatbot-admin/` on baadminbot; admins run `/ingest`, `/grant`, `/revoke`, `/show`, `/bookings`, `/config` and the skill calls the orchestrator's `/admin/*` HTTP API (token + Telegram-id gated, defense-in-depth). See `admin-bot/SKILL.md`.
 
 `booking_flow.py list` does **not** support phone filtering. Per design decision the orchestrator pulls events and filters in-process (the farm-tour skill may migrate into this repo later — no patch to the upstream skill in v1).
 
