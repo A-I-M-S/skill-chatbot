@@ -169,6 +169,7 @@ make orch-lint
 See `docs/ops.md` for systemd units, log paths, restart, and the QR re-auth flow.
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 ## Migration plan (rag-qdrant + farm-tour-booking → skill-chatbot)
 
 Tracking issue is the epic — open it for the full plan and dependency graph. Two reference docs gate the cutover:
@@ -182,6 +183,70 @@ Idempotent retire script: `scripts/retire-old-skills.sh` (removes the rag-qdrant
 
 Before retiring `rag-qdrant` + `farm-tour-booking` (issue #36), run the end-to-end smoke test against the test WhatsApp number. The full 14-case plan + report template lives in [`docs/smoke-test.md`](docs/smoke-test.md). 7 customer-side cases (RAG query, new booking, edit, cancel, pricing, out-of-scope) + 7 admin-side cases (ACL show, bookings prompt + list, ingest, config patch + reject, non-admin refusal).
 >>>>>>> c7e5ff8 (docs(smoke): 14-case cutover smoke test plan + report template (#33))
+=======
+## Production install (systemd)
+
+No Docker. One box (Debian-family), one `sudo` invocation, two daemons + one nightly snapshot timer.
+
+```bash
+# On a clean Debian box (Debian 12+/Ubuntu 22.04+):
+sudo apt-get install -y python3 python3-venv python3-pip nodejs npm jq rsync
+
+# Clone the repo anywhere; the installer will rsync it to /opt/skill-chatbot.
+git clone https://github.com/A-I-M-S/skill-chatbot /tmp/skill-chatbot
+
+# Run the installer (creates skill-chatbot system user, lays out /opt,
+# creates venv, builds wa-bridge, writes /etc/skill-chatbot.env,
+# installs + enables both systemd units + the nightly snapshot timer).
+sudo bash /tmp/skill-chatbot/scripts/install-systemd-system.sh
+
+# Fill in the env file (the installer will refuse to start the units
+# until you do):
+sudo -e /etc/skill-chatbot.env
+#   - QDRANT_URL, QDRANT_API_KEY
+#   - INFERENCE_BASE_URL, INFERENCE_API_KEY  (MiniMax endpoint)
+#   - COMPOSIO_API_KEY, COMPOSIO_CONNECTED_ACCOUNT_ID  (SAAC Tour Outlook)
+#   - ADMIN_TELEGRAM_IDS                      (comma-separated ints)
+#   - ADMIN_HTTP_TOKEN                         (openssl rand -hex 32)
+#   - WA_NOTIFY                                (small list, e.g. +60123456789,+60198765432)
+#   - WA_BRIDGE_TOKEN                          (openssl rand -hex 32)
+#   - BOOKING_RULES_PATH                       (absolute path to booking_rules.yaml)
+
+sudo bash /tmp/skill-chatbot/scripts/install-systemd-system.sh  # 2nd run picks up the env
+
+# Pair WhatsApp (one-time, prints QR — scan from the WhatsApp app):
+sudo journalctl -u skill-chatbot-wa-bridge -f
+# (after pairing, the session lives in /var/lib/skill-chatbot/wa-bridge/auth/)
+
+# Verify
+systemctl status skill-chatbot-wa-bridge skill-chatbot-orchestrator
+curl -sf http://127.0.0.1:7789/health   # → {"status":"ok",...}
+```
+
+To uninstall: `sudo bash /tmp/skill-chatbot/scripts/install-systemd-system.sh --remove`. Repo + env are left in place for safe rollback.
+
+### Component layout
+
+```
+/opt/skill-chatbot/                      # the repo, owned by skill-chatbot user
+  venv/                                  # Python venv (system-wide, not in repo)
+  wa-bridge/, orchestrator/, admin-bot/
+/etc/skill-chatbot.env                   # the one env file (mode 600)
+/var/lib/skill-chatbot/wa-bridge/auth/   # Baileys session (survives restart)
+/var/log/skill-chatbot/                  # journald-mirrored logs
+```
+
+### Manage
+
+```bash
+sudo systemctl restart skill-chatbot-wa-bridge
+sudo systemctl restart skill-chatbot-orchestrator
+sudo systemctl list-timers skill-chatbot-qdrant-snapshot.timer
+sudo journalctl -u skill-chatbot-orchestrator -f
+```
+
+See `docs/ops.md` for the full ops runbook (re-auth, restore from snapshot, etc.).
+>>>>>>> 4ca0167 (feat(deploy): system-level systemd units + installer (#32))
 
 ## Status
 
