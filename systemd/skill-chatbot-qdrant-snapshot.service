@@ -1,0 +1,18 @@
+[Unit]
+Description=skill-chatbot Qdrant nightly snapshot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=skill-chatbot
+Group=skill-chatbot
+EnvironmentFile=/etc/skill-chatbot.env
+ExecStart=/usr/bin/env bash /opt/skill-chatbot/scripts/qdrant-snapshot.sh
+# Hard timeout — Qdrant should respond in seconds. If it doesn't, fail
+# the run so the timer's Persistent=true catches up on next boot.
+TimeoutStartSec=120
+# Lower noise: snapshot script logs to stderr, journald captures it.
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=skill-chatbot-qdrant-snapshot

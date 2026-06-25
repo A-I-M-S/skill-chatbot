@@ -1,0 +1,15 @@
+[Unit]
+Description=skill-chatbot Qdrant nightly snapshot timer
+Requires=skill-chatbot-qdrant-snapshot.service
+
+[Timer]
+# Fire at 03:00 server local time, every day.
+OnCalendar=*-*-* 03:00:00
+# ±5 min jitter so multiple boxes don't stampede Qdrant at the same minute.
+RandomizedDelaySec=300
+# Catch up on missed runs after the box was off.
+Persistent=true
+Unit=skill-chatbot-qdrant-snapshot.service
+
+[Install]
+WantedBy=timers.target

@@ -73,6 +73,12 @@ logs: ## journalctl --user -f for both units
 snapshot-upstream: ## refresh references/upstream/ snapshots
 	bash scripts/snapshot-upstream.sh
 
+snapshot-test: ## bash tests/test_qdrant_snapshot.sh (no Qdrant needed)
+	bash tests/test_qdrant_snapshot.sh
+
+snapshot-now: ## run qdrant-snapshot.sh once with current env
+	bash scripts/qdrant-snapshot.sh
+
 issues: ## list GitHub issues labelled phase:0-bootstrap
 	gh issue list --repo A-I-M-S/skill-chatbot --label phase:0-bootstrap
 
