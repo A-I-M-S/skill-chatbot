@@ -168,6 +168,15 @@ make orch-lint
 
 See `docs/ops.md` for systemd units, log paths, restart, and the QR re-auth flow.
 
+## Migration plan (rag-qdrant + farm-tour-booking → skill-chatbot)
+
+Tracking issue is the epic — open it for the full plan and dependency graph. Two reference docs gate the cutover:
+
+- [`docs/smoke-test.md`](docs/smoke-test.md) — 14-case end-to-end smoke (7 customer WA + 7 admin TG). GO verdict required before cutover.
+- [`docs/cutover.md`](docs/cutover.md) — minute-by-minute cutover sequence (T+0 → T+30), rollback path (`<15 min`, zero data loss), +24h/+7d monitoring checklist.
+
+Idempotent retire script: `scripts/retire-old-skills.sh` (removes the rag-qdrant skill dir and quarantines any leftover `farm-tour-booking-*` proposals).
+
 ## Status
 
 **v1 in development.** Tasks are tracked as GitHub Issues — see the [Issues](../../issues) tab. Opencode is driving implementation in a Plan → Build loop against the model `MiniMax-M3`.
