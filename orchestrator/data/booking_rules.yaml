@@ -52,12 +52,10 @@ pricing:
 blackout_dates: []
 
 # -----------------------------------------------------------------------------
-# Deposit for booking confirmation. Required: true/false. UEN below is a
-# PLACEHOLDER — replace with SAAC's real PayNow UEN before the bot sends
-# payment instructions to any customer.
+# Deposit. Disabled for now — no deposit / PayNow. required:false makes the
+# booking CLI omit any deposit line from the customer confirmation and the
+# calendar event body. To re-enable later, set required:true and add
+# amount_sgd, deadline_hours_before_slot, and instructions (with a real UEN).
 # -----------------------------------------------------------------------------
 deposit:
-  required: true
-  amount_sgd: 50                  # TODO: confirm
-  deadline_hours_before_slot: 48  # TODO: confirm
-  instructions: "PayNow to UEN TODO_REAL_UEN. Reply with payment screenshot."  # TODO
+  required: false

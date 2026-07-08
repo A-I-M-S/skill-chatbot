@@ -43,23 +43,22 @@ so we can route you via the side gate.
 ### How do I book a tour?
 
 Send us a WhatsApp message with your preferred date, time, and group size.
-We will confirm available slots and ask for a deposit to lock the booking.
+We will confirm available slots and lock in your booking.
 
 ### Can I edit or cancel a booking?
 
 Yes — reply to the WhatsApp thread. Edit and cancel both require a plain
-`YES` to confirm. Cancellations inside the deposit window may forfeit the
-deposit; see your confirmation message for the exact deadline.
+`YES` to confirm. Please give us as much notice as you can so we can free up
+the slot for others.
 
 ### Do you take a deposit?
 
-Yes. A SGD 50 deposit is required to confirm a booking, payable by PayNow
-at least 48 hours before the slot. The UEN is sent with the deposit request.
+No — no deposit or upfront payment is needed to confirm a booking.
 
 ### What payment methods do you accept?
 
-PayNow only for the deposit. On-the-day extras (e.g. farm produce) are paid
-by cash or PayNow on site.
+Nothing is due to confirm a booking. On-the-day extras (e.g. farm produce)
+are paid on site.
 
 ## Tours
 
@@ -97,7 +96,7 @@ have a cold-water tap at the wash station.
 ### What happens if it rains?
 
 Tours run in light rain — we have covered areas for the animal segments.
-For thunderstorms we will reschedule at no charge or refund your deposit.
+For thunderstorms we will reschedule at no charge.
 
 ### Are pets allowed?
 

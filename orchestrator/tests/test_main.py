@@ -75,7 +75,7 @@ def test_e2e_message_flows_to_bridge_send(
         request = bridge_mock.calls[0].request
         assert request.headers.get("authorization") == "Bearer secret"
         body = json.loads(request.content)
-        assert body == {"message_id": "msg-1", "text": "echo: what time is the tour?"}
+        assert body == {"to": "6512345678", "text": "echo: what time is the tour?"}
         assert fake_rag_ask == [("what time is the tour?", "echo: what time is the tour?")]
     finally:
         stop.set()

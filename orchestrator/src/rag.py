@@ -8,9 +8,24 @@ the entire RAG stack. Real Qdrant / inference is out of scope for v0 tests
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+# Reasoning models (e.g. MiniMax-M3) emit a <think>…</think> chain-of-thought
+# in the message content. It must never reach a customer, so strip it before
+# returning the answer.
+_THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
+
+
+def strip_reasoning(text: str) -> str:
+    """Remove <think>…</think> blocks (and a lone dangling <think>) from LLM text."""
+    cleaned = _THINK_RE.sub("", text)
+    # Defensive: an unterminated <think> (truncated output) — drop from the tag on.
+    if "<think>" in cleaned.lower():
+        cleaned = re.split(r"<think>", cleaned, flags=re.IGNORECASE)[0]
+    return cleaned.strip()
 
 
 def ask(question: str) -> str:
@@ -21,13 +36,16 @@ def ask(question: str) -> str:
         from rag_qdrant import ask as _ask
         result = _ask(question)
         return result["answer"]
+
+    The answer is passed through :func:`strip_reasoning` so a reasoning model's
+    <think> block never reaches the customer.
     """
     from rag_qdrant import ask as _rag_ask
 
     result: Any = _rag_ask(question)
     if not isinstance(result, dict) or "answer" not in result:
         raise RuntimeError(f"rag_qdrant.ask returned unexpected shape: {result!r}")
-    return str(result["answer"])
+    return strip_reasoning(str(result["answer"]))
 
 
 def ask_with_photo(question: str, photo_path: str | None = None) -> str:

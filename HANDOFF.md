@@ -96,6 +96,15 @@ Follow in order. Don't skip steps.
    The session persists at `/var/lib/skill-chatbot/wa-bridge/auth/`. It survives restarts.
    See SKILL.md → "Re-link WhatsApp" for the full routine and troubleshooting.
 
+   > **Wire the two customer features before smoke-testing.** The bot answers
+   > FAQs (RAG) and books farm tours. Follow
+   > [`orchestrator/README.md` → "Wiring the two customer features"](orchestrator/README.md):
+   > install the RAG engine (`make orch-install-rag`), `python -m rag_qdrant init`,
+   > ingest `faq.md` + `booking_rules.yaml`, set the Composio creds, and fill the
+   > real values in `booking_rules.yaml`. (Booking's CLI is vendored in-repo — no
+   > external skill needed. For the prod `/opt/skill-chatbot/venv`, run the
+   > rag-engine install against that venv.)
+
 5. **Smoke-test** against the test WhatsApp number — see [`docs/smoke-test.md`](docs/smoke-test.md) for the 14 cases. Send from a second WA number (not the test number). 7 customer-side cases + 7 admin-side cases. Fill in the per-case PASS/FAIL table in the report template.
 
    - **GO** → proceed to step 6.

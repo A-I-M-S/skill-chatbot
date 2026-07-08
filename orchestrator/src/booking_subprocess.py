@@ -1,17 +1,14 @@
 """Thin subprocess wrapper around ``booking_flow.py``.
 
-Calls the upstream ``farm-tour-booking`` skill's CLI as a subprocess so the
-state (event store, cache) stays where the skill expects it. We don't
-import the skill directly because:
+Runs the vendored booking CLI (``orchestrator/booking_cli/booking_flow.py``,
+overridable via ``SKILL_FARM_TOUR_BOOKING_PATH``) as a subprocess rather than
+importing it, so a crash in the CLI can't take down the orchestrator and its
+Composio/Outlook state stays isolated. It runs under the orchestrator's own
+interpreter (``sys.executable``) so the CLI's deps resolve, inheriting the
+process env (``COMPOSIO_API_KEY`` etc.).
 
-- The orchestrator may not have the skill's venv activated.
-- The skill's modules assume ``COMPOSIO_API_KEY`` is in the env at import
-  time; we set that explicitly here.
-- A subprocess crash in the skill doesn't take down the orchestrator.
-
-Returns the parsed JSON-ish dict the skill emits (it prints a single
-JSON line on stdout). Raises :class:`BookingSubprocessError` on
-non-zero exit codes or stderr output.
+Returns the parsed JSON dict the CLI prints as a single line on stdout.
+Raises :class:`BookingSubprocessError` on a non-zero exit or unparseable output.
 """
 
 from __future__ import annotations
@@ -20,16 +17,16 @@ import json
 import logging
 import os
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
 
-# Path to the upstream skill's CLI script. Defaults to the snapshot path;
-# operator can override via SKILL_FARM_TOUR_BOOKING_PATH.
-_DEFAULT_PATH = Path(
-    "/root/.openclaw/workspace/admin/skills/farm-tour-booking/scripts/booking_flow.py"
-)
+# Path to the booking CLI script. Defaults to the copy vendored into this
+# repo (self-contained, no external openclaw skill required); an operator can
+# override via SKILL_FARM_TOUR_BOOKING_PATH to point at a deployed skill.
+_DEFAULT_PATH = Path(__file__).resolve().parent.parent / "booking_cli" / "booking_flow.py"
 
 
 class BookingSubprocessError(RuntimeError):
@@ -51,12 +48,11 @@ def _run(args: list[str], *, timeout: float = 15.0) -> dict[str, Any]:
     script = booking_cli_path()
     if not script.exists():
         raise BookingSubprocessError(f"booking_flow.py not found at {script}")
-    cmd = ["python3", str(script), *args]
+    # Run with the same interpreter as the orchestrator (its venv) so the
+    # CLI's deps (pyyaml, python-dateutil, requests) resolve. A bare
+    # "python3" could be a different interpreter without those installed.
+    cmd = [sys.executable, str(script), *args]
     env = os.environ.copy()
-    # Make sure the skill's required env is set; if not, the upstream
-    # CLI will raise its own error and we surface it.
-    if "COMPOSIO_API_KEY" not in env:
-        env["COMPOSIO_API_KEY"] = env.get("COMPOSIO_API_KEY", "")
     logger.debug("booking subprocess: %s", " ".join(cmd))
     try:
         proc = subprocess.run(
@@ -168,7 +164,8 @@ def new_commit(
 
 
 def cancel(event_id: str) -> dict[str, Any]:
-    return _run(["cancel", event_id, "--confirm"])
+    # CLI: `cancel --event-id <id> --confirm` (cancel requires --confirm to commit).
+    return _run(["cancel", "--event-id", event_id, "--confirm"])
 
 
 def edit(
@@ -178,9 +175,11 @@ def edit(
     time: str | None = None,
     pax: int | None = None,
 ) -> dict[str, Any]:
-    """Edit an event. The upstream CLI's ``op_edit`` returns a draft on
-    the first call; commit on the second call with the same args plus
-    ``--confirm``."""
+    """Edit an event and commit it.
+
+    The CLI's ``op_edit`` returns a draft without ``--confirm`` and commits
+    with it. The edit flow only calls this at its confirm step (the user has
+    already approved), so we always pass ``--confirm``."""
     args = ["edit", "--event-id", event_id]
     if date:
         args += ["--date", date]
@@ -188,6 +187,7 @@ def edit(
         args += ["--time", time]
     if pax is not None:
         args += ["--pax", str(pax)]
+    args += ["--confirm"]
     return _run(args)
 
 

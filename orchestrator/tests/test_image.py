@@ -284,7 +284,7 @@ def test_e2e_image_only_sends_ack_no_rag(
         # Exactly one /send: the ack.
         assert len(bridge_mock.calls) == 1
         body = json.loads(bridge_mock.calls[0].request.content)
-        assert body == {"message_id": "img-only-1", "text": "Got the photo."}
+        assert body == {"to": "6591234567", "text": "Got the photo."}
         assert fake_rag_with_photo == []
     finally:
         stop.set()
@@ -341,7 +341,7 @@ def test_e2e_image_chinese_only_sends_zh_ack(
             time.sleep(0.05)
         assert len(bridge_mock.calls) == 1
         body = json.loads(bridge_mock.calls[0].request.content)
-        assert body == {"message_id": "img-zh-1", "text": "收到图片了。"}
+        assert body == {"to": "6591234567", "text": "收到图片了。"}
         assert fake_rag_with_photo == []
     finally:
         stop.set()
@@ -401,7 +401,8 @@ def test_e2e_image_with_question_caption_routes_with_photo_context(
         ack = json.loads(bridge_mock.calls[0].request.content)
         answer = json.loads(bridge_mock.calls[1].request.content)
         assert ack["text"] == "Got the photo."
-        assert answer["message_id"] == "img-q-1"
+        assert ack["to"] == "6591234567"
+        assert answer["to"] == "6591234567"
         # The router (issue #4) returned faq; the dispatcher called
         # rag.ask with the caption. fake_rag_with_photo tracks all calls.
         assert isinstance(answer["text"], str) and answer["text"]
@@ -467,7 +468,7 @@ def test_e2e_image_with_non_question_caption_sends_ack_only(
             time.sleep(0.05)
         assert len(bridge_mock.calls) == 1
         body = json.loads(bridge_mock.calls[0].request.content)
-        assert body == {"message_id": "img-nq-1", "text": "Got the photo."}
+        assert body == {"to": "6591234567", "text": "Got the photo."}
         assert fake_rag_with_photo == []
     finally:
         stop.set()
@@ -523,7 +524,7 @@ def test_e2e_oversize_image_dropped_at_bridge_treated_as_text(
             time.sleep(0.05)
         assert len(bridge_mock.calls) == 1
         body = json.loads(bridge_mock.calls[0].request.content)
-        assert body == {"message_id": "oversize-1", "text": "echo: huge pic"}
+        assert body == {"to": "6591234567", "text": "echo: huge pic"}
         assert len(fake_rag_with_photo) == 1
         assert fake_rag_with_photo[0][0] == "ask"
     finally:

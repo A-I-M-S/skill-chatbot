@@ -62,3 +62,5 @@ queue/
 
 # opencode project config (project-local agent permissions)
 .opencode/config.json
+/skill-rag-qdrant/
+orchestrator/.venv-test/
