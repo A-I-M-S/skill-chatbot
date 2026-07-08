@@ -1,4 +1,4 @@
-.PHONY: help bridge-install bridge-dev bridge-build bridge-start bridge-test bridge-lint bridge-auth \
+.PHONY: help bridge-install bridge-dev bridge-build bridge-start bridge-test bridge-lint bridge-auth bridge-auth-code \
         orch-venv orch-install orch-dev orch-test orch-lint \
         smoke smoke-live ingest-rules ingest-file \
         install-svc uninstall-svc restart status logs \
@@ -25,7 +25,10 @@ bridge-test: ## wa-bridge: vitest run
 bridge-lint: ## wa-bridge: eslint
 	cd wa-bridge && npm run lint
 
-bridge-auth: ## wa-bridge: QR CLI (npm run auth)
+bridge-auth-code: ## wa-bridge: pairing-code link (npm run auth:code) — the canonical re-link path
+	cd wa-bridge && npm run auth:code
+
+bridge-auth: ## wa-bridge: QR CLI (npm run auth) — legacy fallback, prefer bridge-auth-code
 	cd wa-bridge && npm run auth
 
 orch-venv: ## orchestrator: python3.11 -m venv .venv

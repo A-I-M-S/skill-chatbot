@@ -2,26 +2,30 @@
 /**
  * WhatsApp pairing-code authentication for wa-bridge.
  *
- * - Never prints a QR code. Wires NO QR callbacks and uses
- *   `printQRInTerminal: false`.
- * - On every fresh `connection.update` with a `qr` payload, immediately
- *   calls `sock.requestPairingCode(phoneNumber)` and prints the 8-char
- *   Crockford code.
- * - On `connection === "open"` (user has approved on phone) saves creds,
- *   stops the socket, and exits 0.
- * - When the server drops the socket (status 428, common after ~3.5 min
- *   when no approval lands), tears down and creates a fresh socket so a
- *   new pairing code is issued. Repeats until approved or the global
- *   timeout elapses.
- * - Hard 5-minute total timeout — exits 1 if no auth happens by then.
+ * The single, canonical way to (re)link the WhatsApp session. No QR.
  *
- * Baileys socket is configured like the skill-whatsapp reference:
- * markOnlineOnConnect:false, fireInitQueries:false,
- * shouldSyncHistoryMessage:()=>false. Phone number is normalised to
- * digits-only before being passed to `requestPairingCode`.
+ * Flow:
+ *  - Load the multi-file auth state. If it is already registered, connect
+ *    once to confirm the session is healthy and exit 0 — we never request
+ *    a new code against a working session.
+ *  - Otherwise open ONE socket (quiet config: markOnlineOnConnect:false,
+ *    fireInitQueries:false, no history sync, long qrTimeout) and request
+ *    exactly ONE pairing code, printed prominently. The code is NOT rotated
+ *    while you type it — a code that silently rotated out from under the
+ *    user was the historical reason pairing "kept not connecting".
+ *  - On `connection === "open"` the phone approved: creds are saved, exit 0.
+ *  - WhatsApp emits a benign stream-error 515 ("restart required") right
+ *    after the code is accepted; we reconnect once (creds are now
+ *    registered) to finish login — without requesting a new code.
+ *  - If the window closes before approval, exit non-zero with a clear
+ *    "run it again" message instead of silently issuing a new code.
+ *
+ * The number comes from argv, else WA_PAIR_NUMBER in the env, so the
+ * routine can be a single no-arg command on a configured box.
  *
  * Usage:
- *   npm run auth:code -- +65XXXXXXXX
+ *   npm run auth:code -- +65XXXXXXXX      # explicit number
+ *   npm run auth:code                     # uses WA_PAIR_NUMBER from env
  *   tsx bin/auth-code.ts +65XXXXXXXX
  */
 
@@ -29,15 +33,24 @@ import {
   makeWASocket,
   DisconnectReason,
   fetchLatestBaileysVersion,
-  useMultiFileAuthState,
 } from "@whiskeysockets/baileys";
 import { loadEnv } from "../src/env.js";
 import { buildLogger } from "../src/log.js";
 import { defaultLoadAuth } from "../src/auth.js";
 
 const E164 = /^\+[1-9]\d{6,14}$/;
-const CODE_COOLDOWN_MS = 5_000;
-const TOTAL_TIMEOUT_MS = 10 * 60 * 1000; // 10 min overall
+// Give the human the full pairing window on one code. Baileys' default
+// qrTimeout (60s first, 20s after) fires a watchdog "QR refs attempts
+// ended" before a person can type an 8-char code, so we widen it.
+const QR_TIMEOUT_MS = 9 * 60 * 1000;
+// Delay before requesting the code so the websocket has come up.
+const CODE_REQUEST_DELAY_MS = 3_000;
+// Hard ceiling on the whole run (covers the one 515 restart reconnect).
+const TOTAL_TIMEOUT_MS = 10 * 60 * 1000;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
 
 function die(code: number, msg: string): never {
   process.stderr.write(`[wa-bridge/auth-code] ${msg}\n`);
@@ -51,30 +64,45 @@ function printCode(code: string, phone: string): void {
   process.stdout.write("============================================================\n");
   process.stdout.write(`  On the phone registered as ${phone}:\n`);
   process.stdout.write("    WhatsApp -> Settings -> Linked Devices -> Link a Device\n");
-  process.stdout.write(`    When prompted, enter: ${code}\n`);
-  process.stdout.write(`  (Issued at ${new Date().toISOString()};\n`);
-  process.stdout.write(`   if the server drops the link, a new code will appear here.)\n`);
+  process.stdout.write("    -> tap \"Link with phone number instead\"\n");
+  process.stdout.write(`    -> enter: ${code}\n`);
+  process.stdout.write(`  (Issued ${new Date().toISOString()}. This code is NOT rotated —\n`);
+  process.stdout.write("   enter it promptly. If it lapses, just run the command again.)\n");
   process.stdout.write("============================================================\n\n");
 }
 
+type Outcome = { done: true; code: number } | { reconnect: true };
+
 async function main(): Promise<number> {
-  const phoneArg = process.argv[2];
-  if (!phoneArg) die(2, "missing phone number. usage: npm run auth:code -- +65XXXXXXXX");
+  const env = loadEnv();
+  const logger = buildLogger().child({ mod: "auth-code" });
+
+  const phoneArg = process.argv[2] ?? env.WA_PAIR_NUMBER ?? "";
+  if (!phoneArg) {
+    die(
+      2,
+      "no phone number. pass one (npm run auth:code -- +65XXXXXXXX) or set WA_PAIR_NUMBER in the env.",
+    );
+  }
   if (!E164.test(phoneArg)) {
     die(2, `invalid phone number "${phoneArg}". expected E.164 like +6591234567 (no spaces).`);
   }
   // Baileys requestPairingCode takes digits only, no leading '+'.
   const phoneDigits = phoneArg.replace(/^\+/, "");
 
-  const env = loadEnv();
-  const logger = buildLogger().child({ mod: "auth-code" });
-
-  // Fresh auth state for pairing. Baileys writes creds into this dir on
-  // creds.update; the running bridge picks them up on next launch.
+  // Baileys writes creds into this dir on creds.update; the running bridge
+  // picks them up on next launch.
   const auth = await defaultLoadAuth(env.WA_AUTH_DIR);
 
-  // WhatsApp rejects the hardcoded version array (405 Method Not Allowed
-  // on stale fingerprints). Pull the live version from wa.me.
+  if (auth.state.creds?.registered) {
+    logger.info("auth state already registered — verifying the session instead of pairing");
+    process.stdout.write(
+      "[wa-bridge/auth-code] this number is already linked; verifying the session (no new code needed)…\n",
+    );
+  }
+
+  // WhatsApp rejects a stale hardcoded version array (405 Method Not
+  // Allowed). Pull the live version; fall back to a recent 3-tuple.
   let version: [number, number, number];
   try {
     const { version: latest } = await fetchLatestBaileysVersion();
@@ -86,104 +114,73 @@ async function main(): Promise<number> {
   }
 
   const startedAt = Date.now();
-  let resolved = false;
-  let lastCodeAt = 0;
-  let attempt = 0;
-  // Honor the owner's preference: 2026-07-07 rule — do not auto-rotate a
-  // new pairing code if the previous one expires. Set NO_RETRY=1 to run
-  // single-shot (one code, one socket, exit on close). Default (NO_RETRY
-  // unset) keeps the historical auto-rotate for scripted flows.
-  const singleShot = process.env.NO_RETRY === "1";
+  // One code for the whole run. Once issued we never issue another — a
+  // rotating code is what broke pairing before.
+  let codeIssued = false;
 
-  while (!resolved) {
+  // The loop only re-iterates for the benign 515 restart (or the verify of
+  // an already-registered session). It never re-issues a pairing code.
+  for (;;) {
     if (Date.now() - startedAt > TOTAL_TIMEOUT_MS) {
       process.stderr.write(
-        `[wa-bridge/auth-code] overall timeout (${TOTAL_TIMEOUT_MS / 1000}s) reached; no approval landed.\n`,
+        `[wa-bridge/auth-code] overall timeout (${TOTAL_TIMEOUT_MS / 1000}s) with no pairing. run the command again.\n`,
       );
       return 1;
     }
 
-    if (singleShot && attempt > 0) {
-      process.stderr.write(
-        "[wa-bridge/auth-code] NO_RETRY=1 set — refusing to rotate to a new code. Stopping. Run again to retry.\n",
-      );
-      return 2;
-    }
-
-    attempt += 1;
-    logger.info({ attempt }, "opening socket");
+    const registered = Boolean(auth.state.creds?.registered);
+    logger.info({ registered }, "opening socket");
 
     const sock = makeWASocket({
       auth: auth.state,
       version,
-      // CRITICAL: never print QR to terminal.
+      // CRITICAL: never print QR — pairing is by code only.
       printQRInTerminal: false,
-      // skill-whatsapp reference: stay quiet until the user completes
-      // pairing. Connecting with `markOnlineOnConnect: true` causes
-      // Baileys to emit presence updates that the server treats as a
-      // second concurrent device handshake and races against the
-      // pairing approval.
+      // Stay quiet until pairing completes. markOnlineOnConnect / init
+      // queries before we are a real session make the server treat us as a
+      // second concurrent device and race the pairing approval (428).
       markOnlineOnConnect: false,
-      // skill-whatsapp reference: do not fire the init query burst on
-      // connect. Same rationale — we are not a real session yet, so
-      // any IQ we send before pairing completes can confuse the
-      // server-side state machine and trigger the 428 Connection
-      // Terminated response before the user has typed the code.
       fireInitQueries: false,
-      // skill-whatsapp reference: ignore history-sync notifications.
       shouldSyncHistoryMessage: () => false,
       syncFullHistory: false,
       emitOwnEvents: false,
-      // Baileys' default qrTimeout (60s first, 20s after) fires a watchdog
-      // "QR refs attempts ended" before a human can approve a pairing code.
-      qrTimeout: 9 * 60 * 1000,
+      qrTimeout: QR_TIMEOUT_MS,
       keepAliveIntervalMs: 30_000,
-      // The per-socket logger is set from buildLogger() in main(); env
-      // LOG_LEVEL=trace will dump raw IQ XML in both directions.
     });
 
-    const closedPromise = new Promise<{
-      statusCode: number | undefined;
-      loggedOut: boolean;
-      message: string;
-    }>((resolveClose) => {
-      sock.ev.on("connection.update", async (u) => {
-        if (u.qr) {
-          const now = Date.now();
-          if (now - lastCodeAt < CODE_COOLDOWN_MS) {
-            logger.debug("qr event within cooldown, skipping new code request");
-            return;
-          }
-          lastCodeAt = now;
-          logger.info(
-            { qrLen: u.qr.length },
-            "qr event received (discarded), requesting pairing code",
-          );
-          try {
-            const code = await sock.requestPairingCode(phoneDigits);
-            printCode(code, phoneArg);
-          } catch (e) {
-            logger.error({ err: String(e) }, "requestPairingCode failed");
-            process.stderr.write(`[wa-bridge/auth-code] requestPairingCode failed: ${String(e)}\n`);
-            resolveClose({ statusCode: undefined, loggedOut: false, message: String(e) });
-          }
-        }
+    const outcome = await new Promise<Outcome>((resolve) => {
+      let settled = false;
+      const settle = (o: Outcome) => {
+        if (settled) return;
+        settled = true;
+        resolve(o);
+      };
 
+      sock.ev.on("creds.update", async () => {
+        try {
+          await auth.saveCreds();
+        } catch (e) {
+          logger.error({ err: String(e) }, "saveCreds failed");
+        }
+      });
+
+      sock.ev.on("connection.update", (u) => {
+        // We deliberately ignore u.qr: pairing is by code, not QR.
         if (u.connection === "open") {
-          resolved = true;
-          logger.info("connection open, paired");
+          logger.info("connection open, linked");
           process.stdout.write(
             "[wa-bridge/auth-code] paired successfully. creds in " + env.WA_AUTH_DIR + "\n",
           );
-          // Allow creds.update to flush before teardown.
+          // Let a trailing creds.update flush before teardown.
           setTimeout(() => {
             try {
               sock.end(undefined);
             } catch {
               /* ignore */
             }
-            resolveClose({ statusCode: undefined, loggedOut: false, message: "open" });
+            settle({ done: true, code: 0 });
           }, 500);
+          return;
         }
 
         if (u.connection === "close") {
@@ -192,47 +189,72 @@ async function main(): Promise<number> {
             | undefined;
           const statusCode = err?.output?.statusCode;
           const loggedOut = statusCode === DisconnectReason.loggedOut;
+          const nowRegistered = Boolean(auth.state.creds?.registered);
           logger.warn(
-            { statusCode, loggedOut, err: err?.message },
+            { statusCode, loggedOut, nowRegistered, err: err?.message },
             "connection closed",
           );
-          resolveClose({ statusCode, loggedOut, message: err?.message ?? "closed" });
+          try {
+            sock.end(undefined);
+          } catch {
+            /* ignore */
+          }
+          if (loggedOut) {
+            settle({ done: true, code: 1 });
+            return;
+          }
+          // Pairing was accepted (creds now registered) and the server
+          // asked us to restart (515) — reconnect to finish login. Also
+          // covers the verify path for an already-registered session.
+          if (nowRegistered) {
+            settle({ reconnect: true });
+            return;
+          }
+          // Closed before approval. Do NOT rotate the code — bail out and
+          // let the operator re-run with a fresh code.
+          settle({ done: true, code: 1 });
         }
       });
-    });
 
-    sock.ev.on("creds.update", async () => {
-      try {
-        await auth.saveCreds();
-      } catch (e) {
-        logger.error({ err: String(e) }, "saveCreds failed");
+      // Request exactly one pairing code, after a short delay so the
+      // websocket is up. Only when we still need to register.
+      if (!registered && !codeIssued) {
+        void (async () => {
+          try {
+            await sleep(CODE_REQUEST_DELAY_MS);
+            if (codeIssued) return;
+            const code = await sock.requestPairingCode(phoneDigits);
+            codeIssued = true;
+            printCode(code, phoneArg);
+          } catch (e) {
+            logger.error({ err: String(e) }, "requestPairingCode failed");
+            process.stderr.write(
+              `[wa-bridge/auth-code] requestPairingCode failed: ${String(e)}. run the command again.\n`,
+            );
+            try {
+              sock.end(new Error("requestPairingCode failed"));
+            } catch {
+              /* ignore */
+            }
+            settle({ done: true, code: 1 });
+          }
+        })();
       }
     });
 
-    const closeInfo = await closedPromise;
-
-    // Try to end gracefully; ignore errors if already closed.
-    try {
-      sock.end(undefined);
-    } catch {
-      /* ignore */
+    if ("done" in outcome) {
+      if (outcome.code !== 0 && !auth.state.creds?.registered) {
+        process.stderr.write(
+          "[wa-bridge/auth-code] link not completed. run `npm run auth:code` again and enter the fresh code promptly.\n",
+        );
+      }
+      return outcome.code;
     }
 
-    if (resolved) return 0;
-
-    if (closeInfo.loggedOut) {
-      process.stderr.write(
-        "[wa-bridge/auth-code] logged out from server. restart this command to retry.\n",
-      );
-      return 1;
-    }
-
-    logger.info({ attempt, reason: closeInfo.message }, "socket ended, will retry with fresh socket");
-    // Brief backoff so we don't hammer the server.
-    await new Promise((r) => setTimeout(r, 1_500));
+    // reconnect (515 restart / verify): finish login without a new code.
+    logger.info("reconnecting to finish login…");
+    await sleep(1_500);
   }
-
-  return 0;
 }
 
 main().then(
