@@ -14,7 +14,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint . --max-warnings=0",
-    "auth": "tsx bin/auth.ts"
+    "auth": "tsx bin/auth.ts",
+    "auth:code": "tsx bin/auth-code.ts"
   },
   "dependencies": {
     "@whiskeysockets/baileys": "^7.0.0-rc13",
