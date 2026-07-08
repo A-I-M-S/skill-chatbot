@@ -27,6 +27,10 @@
 # don't take on Python + Pillow just for this.
 set -euo pipefail
 
+# Helpers (defined before first use — this script runs under `set -e`).
+die()  { echo "error: $*" >&2; exit 1; }
+note() { echo "[wa-bridge-qr] $*" >&2; }
+
 OUT_PATH="${1:-/tmp/wa-bridge-qr.png}"
 STAY_ALIVE=0
 [[ "${2:-}" == "--pair-and-stay" || "${1:-}" == "--pair-and-stay" ]] && STAY_ALIVE=1
@@ -47,7 +51,7 @@ set -a; . "$ENV_FILE"; set +a
 # session.
 if [[ -d "${WA_AUTH_DIR:-/var/lib/skill-chatbot/wa-bridge/auth}" ]] \
    && [[ -f "${WA_AUTH_DIR}/creds.json" ]]; then
-    die "auth state already present at ${WA_AUTH_DIR}/creds.json — nothing to pair. To re-pair, run \`scripts/install-systemd-system.sh --reauth\` or remove the auth dir manually."
+    die "auth state already present at ${WA_AUTH_DIR}/creds.json — nothing to pair. To re-link, use the pairing-code routine (\`npm run auth:code\`, see SKILL.md → Re-link WhatsApp) or remove the auth dir manually first."
 fi
 
 # Make sure the build is current.
@@ -112,7 +116,3 @@ if [[ "$STAY_ALIVE" -eq 1 ]]; then
     note "STAY_ALIVE: leaving wa-bridge running. Auth state will be at ${WA_AUTH_DIR}/ after scan. systemd can now manage it."
     wait "$WA_PID"
 fi
-
-# helpers used above
-die() { echo "error: $*" >&2; exit 1; }
-note() { echo "[wa-bridge-qr] $*" >&2; }

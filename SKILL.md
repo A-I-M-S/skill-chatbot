@@ -14,7 +14,7 @@ Project-management skill for the WA Farm Tour chatbot. The chatbot itself is a l
 - Status / health of the running chatbot
 - Start or stop the bridge or orchestrator
 - Tail logs (`wa-bridge`, `orchestrator`, smoke test)
-- Re-run QR auth when the Baileys session drops
+- Re-link WhatsApp (pairing code) when the Baileys session drops
 - Run a smoke test (NDJSON replay or end-to-end)
 - Ingest a new FAQ source into Qdrant
 - List / triage GitHub Issues for the project
@@ -33,85 +33,103 @@ Do **not** invoke to read or answer customer WhatsApp messages — that path is 
 | `INFERENCE_BASE_URL`, `INFERENCE_API_KEY`, `INFERENCE_MODEL` | shared with `rag-qdrant` | LLM (MiniMax-M3 already authed) |
 | `COMPOSIO_API_KEY`, `COMPOSIO_CONNECTED_ACCOUNT_ID` | shared with `farm-tour-booking` | Outlook calendar |
 
-## Scripts (all CLI; one JSON line on stdout unless noted)
+## Operating the stack
 
-`scripts/` is auto-generated on first run from the templates in this skill.
+The two daemons run under **system** systemd on the box (installed by
+`scripts/install-systemd-system.sh`). Everything below uses commands that
+exist today — no wrapper scripts to generate. `REPO` is the checkout root
+(prod: `/opt/skill-chatbot`).
 
-```bash
-SKILL=$CHATBOT_REPO/skill-chatbot-scripts   # created by `skill init`
-```
+| Unit | Port | Health |
+|---|---|---|
+| `skill-chatbot-wa-bridge.service` | 7788 | `GET /status` |
+| `skill-chatbot-orchestrator.service` | 7789 | `GET /health` |
 
 ### Status
 
 ```bash
-python3 $SKILL/status.py
-# → one JSON line on stdout, e.g.:
-#    {"bridge": "up", "orchestrator": "up",
-#     "bridge_session": "ok"|"qr_needed"|"connecting",
-#     "bridge_queued_send": 0,
-#     "orchestrator_last_message_id": "..."}
+curl -s localhost:7788/status | jq .    # {session, last_message_at, reconnecting, attempt, qr_needed_count}
+curl -s localhost:7789/health | jq .    # {ok, db, last_processed_message_id}
+systemctl status skill-chatbot-wa-bridge skill-chatbot-orchestrator --no-pager
 ```
 
-Under the hood this calls:
-- `GET http://127.0.0.1:7788/status` (wa-bridge) → `{session, last_message_at, queued_send, reconnecting, attempt, qr_needed_count}`
-- `GET http://127.0.0.1:7789/health` (orchestrator) → `{ok, db, last_processed_message_id}`
+`session` is `ok` | `connecting` | `qr_needed`. `qr_needed` means the
+WhatsApp session dropped — re-link with the pairing-code routine below.
 
-Make sure the bridge has a `/status` endpoint (issue #2) and the orchestrator has a `/health` endpoint (issue #3) before relying on the script.
-
-### Start / stop
+### Start / stop / restart
 
 ```bash
-python3 $SKILL/control.py start   # both daemons via systemd --user
-python3 $SKILL/control.py stop
-python3 $SKILL/control.py restart bridge
-python3 $SKILL/control.py restart orchestrator
+sudo systemctl start   skill-chatbot-wa-bridge skill-chatbot-orchestrator
+sudo systemctl stop    skill-chatbot-wa-bridge skill-chatbot-orchestrator
+sudo systemctl restart skill-chatbot-wa-bridge        # bridge only
+sudo systemctl restart skill-chatbot-orchestrator     # orchestrator only
 ```
 
 ### Logs
 
 ```bash
-python3 $SKILL/logs.py tail bridge --lines 200
-python3 $SKILL/logs.py tail orchestrator --lines 200
-python3 $SKILL/logs.py tail smoke
+sudo journalctl -u skill-chatbot-wa-bridge    -n 200 -f
+sudo journalctl -u skill-chatbot-orchestrator -n 200 -f
 ```
 
-### Re-auth (Baileys session dropped)
+### Re-link WhatsApp — pairing code (NO QR)
+
+This is the **one** way to (re)link the session. QR is not used. Set
+`WA_PAIR_NUMBER` in `/etc/skill-chatbot.env` (the WhatsApp number in E.164)
+once, then the routine is deterministic:
 
 ```bash
-python3 $SKILL/control.py auth-bridge
-# prints QR to stdout, scan from WhatsApp app, waits for sync
+sudo systemctl stop skill-chatbot-wa-bridge                 # 1. free the auth dir
+cd $REPO/wa-bridge && sudo -E npm run auth:code             # 2. prints ONE 8-char code
+#    (or pass the number explicitly: sudo -E npm run auth:code -- +6591234567)
+# 3. On the phone: WhatsApp → Settings → Linked Devices → Link a Device
+#    → "Link with phone number instead" → enter the code.
+#    Wait for "paired successfully". The code does NOT rotate; if it lapses
+#    before you type it, just re-run step 2.
+sudo systemctl start skill-chatbot-wa-bridge                # 4. bring the bridge back
+curl -s localhost:7788/status | jq -r .session             # 5. expect "ok"
 ```
+
+If it exits without pairing, re-run step 2 and enter the fresh code
+promptly — do not try other commands. Creds persist at `WA_AUTH_DIR`
+(`/var/lib/skill-chatbot/wa-bridge/auth`) and survive restarts, so this is
+only needed when the number is genuinely unlinked (`session: qr_needed`).
+
+> Emergency QR fallback only (not the routine): `sudo bash scripts/wa-bridge-qr.sh`
+> renders a scannable PNG. Prefer the pairing-code flow above.
 
 ### Smoke test
 
 ```bash
-python3 $SKILL/smoke.py                # NDJSON replay
-python3 $SKILL/smoke.py --live         # sends to the real WA number (use with care)
+cd $REPO/orchestrator && python3 scripts/smoke.py          # NDJSON replay
 ```
 
 ### Ingest helper
 
 ```bash
-python3 $SKILL/ingest_rules.py         # one-shot: push booking_rules.yaml into the existing Qdrant collection
-python3 $SKILL/ingest_file.py /path/to/faq.md
+cd $REPO/orchestrator
+python3 scripts/ingest_rules.py                            # push booking_rules.yaml into Qdrant
+python3 scripts/ingest_file.py /path/to/faq.md
 ```
 
 ### Issues
 
 ```bash
-python3 $SKILL/issues.py list
-python3 $SKILL/issues.py show <number>
-python3 $SKILL/issues.py create --title "..." --body "..." --label "phase:4-flows"
+gh issue list  --repo A-I-M-S/skill-chatbot
+gh issue view  <number> --repo A-I-M-S/skill-chatbot
+gh issue create --repo A-I-M-S/skill-chatbot --title "..." --body "..." --label "phase:4-flows"
 ```
 
 ## Output contract
 
-Always print **one JSON line on stdout** for scripts, plus optional human logs on stderr. Surface the `error` field for any failure. Never leak the WhatsApp session creds or `INFERENCE_API_KEY` in logs.
+The health endpoints return one JSON object; surface the `error`/`ok` field
+on failure. Never leak the WhatsApp session creds, the pairing code, or
+`INFERENCE_API_KEY` in logs.
 
 ## Edge cases
 
-- `bridge_down` — wa-bridge process not running; `control.py start` or check logs
-- `qr_needed` — session invalid; run `auth-bridge`
+- `bridge_down` — wa-bridge not running; `sudo systemctl start skill-chatbot-wa-bridge` or check logs
+- `qr_needed` — session invalid; run the pairing-code re-link routine above
 - `composio_failed` — propagates from `farm-tour-booking`; the orchestrator will have already notified `WA_NOTIFY`
 - `inference_429` — LLM rate-limited; the orchestrator retries with backoff and tells the user briefly
 - `qdrant_unreachable` — orchestrator falls back to "I'll have the team reach out" and notifies admins
@@ -165,10 +183,10 @@ Inbound WhatsApp **images** are saved to disk and acked; if the image has a capt
 
 ## Escalation to Boon
 
-- WhatsApp session cannot be re-authed (number banned, hardware lost)
+- WhatsApp session cannot be re-linked via pairing code (number banned, hardware lost)
 - Composio / Outlook account is down for >15 min during business hours
 - Repeated LLM 4xx/5xx after backoff (likely model config drift)
-- Customer is abusive → block via `python3 $SKILL/control.py block <phone>`
+- Customer is abusive → escalate to Boon; there is no self-serve block command yet
 
 ## Reference
 

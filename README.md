@@ -150,8 +150,9 @@ make bridge-install            # wa-bridge: npm ci
 make orch-venv                 # orchestrator: python3.11 -m venv .venv
 make orch-install              # orchestrator: pip install -e '.[dev]'
 
-# 3. Pair WhatsApp (prints QR — scan from the WhatsApp app)
-make bridge-auth
+# 3. Link WhatsApp with a pairing code (no QR); set WA_PAIR_NUMBER in .env first
+make bridge-auth-code
+# phone: WhatsApp → Linked Devices → Link a Device → "Link with phone number instead" → enter the code
 
 # 4. Run both daemons (foreground, two background jobs, Ctrl-C stops both)
 make bridge-dev                # in one terminal
@@ -194,8 +195,11 @@ sudo -e /etc/skill-chatbot.env
 
 sudo bash /tmp/skill-chatbot/scripts/install-systemd-system.sh  # 2nd run picks up the env
 
-# Pair WhatsApp (one-time, prints QR — scan from the WhatsApp app):
-sudo journalctl -u skill-chatbot-wa-bridge -f
+# Link WhatsApp (one-time, pairing code — no QR; set WA_PAIR_NUMBER in /etc/skill-chatbot.env):
+sudo systemctl stop skill-chatbot-wa-bridge
+cd /opt/skill-chatbot/wa-bridge && sudo -E npm run auth:code   # prints one 8-char code
+# phone: WhatsApp → Linked Devices → Link a Device → "Link with phone number instead" → enter the code
+sudo systemctl start skill-chatbot-wa-bridge
 # (after pairing, the session lives in /var/lib/skill-chatbot/wa-bridge/auth/)
 
 # Verify

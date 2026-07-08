@@ -8,6 +8,9 @@ const EnvSchema = z.object({
   WA_BRIDGE_PORT: z.coerce.number().int().positive().default(7788),
   WA_BRIDGE_TOKEN: z.string().min(1, "WA_BRIDGE_TOKEN is required for HTTP auth"),
   WA_AUTH_DIR: z.string().min(1, "WA_AUTH_DIR is required for Baileys multi-file auth state"),
+  // Default WhatsApp number for `npm run auth:code` (E.164, e.g. +6591234567).
+  // A CLI arg overrides it; optional so the bridge itself runs without it.
+  WA_PAIR_NUMBER: z.string().optional(),
   INBOX_PATH: z.string().min(1, "INBOX_PATH is required for the orchestrator NDJSON tail"),
   OUTBOX_PATH: z.string().min(1, "OUTBOX_PATH is required for the outbound queue"),
   LOG_LEVEL: z

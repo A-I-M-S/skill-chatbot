@@ -50,15 +50,19 @@ systemctl --user enable --now skill-chatbot-bridge skill-chatbot-orchestrator
 loginctl enable-linger $USER   # survive logout
 ```
 
-## Re-auth (Baileys session dropped)
+## Re-link (Baileys session dropped) — pairing code, no QR
 
 ```bash
-systemctl --user stop skill-chatbot-bridge
-cd /root/.openclaw/workspace/dev/projects/skill-chatbot/wa-bridge
-npm run auth    # prints QR to stdout
-# scan from WhatsApp → Linked Devices → Link a Device
-systemctl --user start skill-chatbot-bridge
+sudo systemctl stop skill-chatbot-wa-bridge
+cd /opt/skill-chatbot/wa-bridge && sudo -E npm run auth:code   # set WA_PAIR_NUMBER in /etc/skill-chatbot.env, or pass -- +65…
+# phone: WhatsApp → Linked Devices → Link a Device → "Link with phone number instead" → enter the 8-char code
+sudo systemctl start skill-chatbot-wa-bridge
+curl -s localhost:7788/status | jq -r .session   # expect "ok"
 ```
+
+The code is NOT rotated while you type it; if it lapses, just re-run the
+`auth:code` command. QR is not used — `scripts/wa-bridge-qr.sh` remains only
+as an emergency fallback. See SKILL.md → "Re-link WhatsApp".
 
 ## Smoke test
 
@@ -81,7 +85,7 @@ tail -f /var/log/skill-chatbot/*.log
 ## Backups
 
 - `state.sqlite` — daily, retained 30d. Restore by `cp` + `chmod 600`.
-- `auth_info/` — never back up off-host. Treat as a credential.
+- `$WA_AUTH_DIR` (`/var/lib/skill-chatbot/wa-bridge/auth`) — never back up off-host. Treat as a credential.
 - `inbox.ndjson` — optional, useful for replay. Rotate weekly.
 
 ## Recovery procedures (issue #12 hardening)
@@ -122,12 +126,13 @@ sed -i '$d' wa-bridge/queue/outbound.jsonl
 
 ### Bridge reconnect / give-up
 
-The bridge auto-reconnects with exponential backoff (1s → 2s → 5s → 10s → 20s → 40s → 60s, capped at the configured max). After 4 successive QR-needs the bridge stops auto-reconnecting and logs `CRITICAL: too many QR cycles`. To relink:
+The bridge auto-reconnects with exponential backoff (1s → 2s → 5s → 10s → 20s → 40s → 60s, capped at the configured max). After 4 successive QR-needs the bridge stops auto-reconnecting and logs `CRITICAL: too many QR cycles`. To relink (pairing code, no QR):
 
 ```bash
-systemctl --user stop skill-chatbot-bridge
-cd wa-bridge && npm run auth    # scan QR from WhatsApp
-systemctl --user start skill-chatbot-bridge
+sudo systemctl stop skill-chatbot-wa-bridge
+cd /opt/skill-chatbot/wa-bridge && sudo -E npm run auth:code   # uses WA_PAIR_NUMBER, or pass -- +65…
+# phone: Linked Devices → Link a Device → "Link with phone number instead" → enter the code
+sudo systemctl start skill-chatbot-wa-bridge
 ```
 
 ### Orchestrator: replay state_log
@@ -204,9 +209,10 @@ python3.11 -m venv .venv  # or python3.13 — whatever's on the box; requires-py
 pip install -e '.[dev]'
 cd ..
 
-# 4. Auth the bridge (scan QR from your WhatsApp app)
+# 4. Link the bridge with a pairing code (no QR); set WA_PAIR_NUMBER first
 cd wa-bridge
-npm run auth    # prints QR — scan from WhatsApp → Linked Devices → Link a Device
+npm run auth:code    # prints one 8-char code
+# phone: WhatsApp → Linked Devices → Link a Device → "Link with phone number instead" → enter the code
 cd ..
 
 # 5. Install the systemd --user units + logrotate (writes to /etc/logrotate.d/, needs sudo once)
@@ -232,7 +238,7 @@ Twelve common incidents, each with the runbook command. (Detailed recovery proce
 |---|---|---|---|
 | 1 | Bridge down | `systemctl --user status skill-chatbot-bridge` | `systemctl --user restart skill-chatbot-bridge` |
 | 2 | Orchestrator down | `systemctl --user status skill-chatbot-orchestrator` | `systemctl --user restart skill-chatbot-orchestrator` |
-| 3 | Session lost / QR re-auth | `curl -s :7788/status` → `session: "qr_needed"`, `qr_needed_count >= 4` | `make bridge-auth` |
+| 3 | Session lost / re-link | `curl -s :7788/status` → `session: "qr_needed"` | Pairing-code re-link: `make bridge-auth-code` (see "Re-link" above) |
 | 4 | Composio 5xx for >2 min | `journalctl --user -u skill-chatbot-bridge --since '2 min ago' | grep -i composio` | Wait + retry; if >10 min, notify Boon (calendar entity drift) |
 | 5 | LLM 429 storm | `journalctl --user -u skill-chatbot-orchestrator | grep 429` | Backoff is automatic (1s/2s/4s); if it persists, lower the LLM-side rate limit |
 | 6 | Qdrant unreachable | `journalctl --user -u skill-chatbot-orchestrator | grep -i qdrant` | All FAQ queries fail; orchestrator hands off to admins via WA_NOTIFY |
@@ -240,7 +246,7 @@ Twelve common incidents, each with the runbook command. (Detailed recovery proce
 | 8 | Customer asks for human mid-flow | (happen during book_new/edit/cancel) | `python3 $SKILL/control.py takeover <phone>` (TODO) — v1: tell user to call +65… via ADMIN_CONTACT_NUMBER |
 | 9 | State DB corruption | `sqlite3 orchestrator/state.sqlite ".schema"` errors | Stop orchestrator → `cp state.sqlite state.sqlite.corrupt.$(date +%s)` → `rm state.sqlite*` → restart |
 | 10 | Log disk full | `df -h /var/log/skill-chatbot` | `sudo find /var/log/skill-chatbot -name '*.gz' -mtime +90 -delete` |
-| 11 | Phone number changed (WhatsApp) | WhatsApp itself was changed | Stop bridge → `rm -rf wa-bridge/auth_info` → `make bridge-auth` with the new number |
+| 11 | Phone number changed (WhatsApp) | WhatsApp itself was changed | Stop bridge → `rm -rf "$WA_AUTH_DIR"` → update `WA_PAIR_NUMBER` → `make bridge-auth-code` with the new number |
 | 12 | Admin off-rotation (WA_NOTIFY empty) | `.env` check | Edit `.env` `WA_NOTIFY=...`, `systemctl --user restart skill-chatbot-orchestrator` |
 | 13 | Outbound queue stuck | `wc -l wa-bridge/queue/outbound.jsonl` | Inspect the failing line, `sed -i '$d' wa-bridge/queue/outbound.jsonl` to drop the bad entry, restart bridge |
 
@@ -254,11 +260,13 @@ State + log directories are managed by systemd (`StateDirectory=` + `LogsDirecto
 - `/var/lib/skill-chatbot/orchestrator/state.sqlite` — orchestrator state
 - `/var/log/skill-chatbot/` — journald-mirrored logs
 
-Re-auth flow when the Baileys session drops:
+Re-link flow when the Baileys session drops (pairing code, no QR):
 
 ```bash
-sudo journalctl -u skill-chatbot-wa-bridge -f   # QR prints to journal
-# scan from WhatsApp app; on success, session re-persists to /var/lib
+sudo systemctl stop skill-chatbot-wa-bridge
+cd /opt/skill-chatbot/wa-bridge && sudo -E npm run auth:code   # uses WA_PAIR_NUMBER, or pass -- +65…
+# phone: Linked Devices → Link a Device → "Link with phone number instead" → enter the code
+sudo systemctl start skill-chatbot-wa-bridge                   # session re-persists to /var/lib
 ```
 
 Restore from nightly snapshot (see issue #34):

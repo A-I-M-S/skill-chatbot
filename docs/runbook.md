@@ -70,12 +70,13 @@ curl -s http://127.0.0.1:7788/status | jq   # confirm session + qr_needed_count
 journalctl --user -u skill-chatbot-bridge | grep -i "qr\|relink\|give up" | tail -20
 ```
 
-To relink:
+To relink (pairing code, no QR):
 
 ```bash
-systemctl --user stop skill-chatbot-bridge
-cd wa-bridge && npm run auth   # scan QR from WhatsApp
-systemctl --user start skill-chatbot-bridge
+sudo systemctl stop skill-chatbot-wa-bridge
+cd /opt/skill-chatbot/wa-bridge && sudo -E npm run auth:code   # uses WA_PAIR_NUMBER, or pass -- +65…
+# phone: Linked Devices → Link a Device → "Link with phone number instead" → enter the code
+sudo systemctl start skill-chatbot-wa-bridge
 ```
 
 ## 4. Composio 5xx for >2 min
@@ -162,13 +163,14 @@ sudo logrotate -f /etc/logrotate.d/skill-chatbot
 
 ## 11. Phone number changed (WhatsApp)
 
-If the WhatsApp number itself was migrated (e.g. SIM swap), the old `auth_info/` is dead.
+If the WhatsApp number itself was migrated (e.g. SIM swap), the old auth state is dead.
 
 ```bash
-systemctl --user stop skill-chatbot-bridge
-rm -rf wa-bridge/auth_info
-cd wa-bridge && npm run auth   # scan QR from new phone
-systemctl --user start skill-chatbot-bridge
+sudo systemctl stop skill-chatbot-wa-bridge
+rm -rf "$WA_AUTH_DIR"                                           # /var/lib/skill-chatbot/wa-bridge/auth
+# update WA_PAIR_NUMBER in /etc/skill-chatbot.env to the new number
+cd /opt/skill-chatbot/wa-bridge && sudo -E npm run auth:code    # pairing code for the new phone
+sudo systemctl start skill-chatbot-wa-bridge
 ```
 
 If the actual *business phone* changed (i.e. customers should reach a new number), update `.env` `WA_BRIDGE_URL` doesn't change but you need to: edit any docs/README/SKILL.md mentioning the old number, and re-run `make ingest-rules` if the FAQ answers reference it.

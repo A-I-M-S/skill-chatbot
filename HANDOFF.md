@@ -84,14 +84,17 @@ Follow in order. Don't skip steps.
    sudo bash /tmp/skill-chatbot/scripts/install-systemd-system.sh   # 2nd run, picks up env
    ```
 
-4. **Pair WhatsApp** on Box A (one-time):
+4. **Pair WhatsApp** on Box A (one-time, pairing code — no QR):
 
    ```bash
-   sudo journalctl -u skill-chatbot-wa-bridge -f
-   # scan the QR from the WhatsApp app on the test number
+   sudo systemctl stop skill-chatbot-wa-bridge
+   cd /opt/skill-chatbot/wa-bridge && sudo -E npm run auth:code   # set WA_PAIR_NUMBER in /etc/skill-chatbot.env, or pass -- +65…
+   # phone: WhatsApp → Linked Devices → Link a Device → "Link with phone number instead" → enter the 8-char code
+   sudo systemctl start skill-chatbot-wa-bridge
    ```
 
    The session persists at `/var/lib/skill-chatbot/wa-bridge/auth/`. It survives restarts.
+   See SKILL.md → "Re-link WhatsApp" for the full routine and troubleshooting.
 
 5. **Smoke-test** against the test WhatsApp number — see [`docs/smoke-test.md`](docs/smoke-test.md) for the 14 cases. Send from a second WA number (not the test number). 7 customer-side cases + 7 admin-side cases. Fill in the per-case PASS/FAIL table in the report template.
 

@@ -230,6 +230,13 @@ export function createSocket(opts: ConnectOptions): SocketController {
       markOnlineOnConnect: true,
       syncFullHistory: false,
       emitOwnEvents: false,
+      // Pairing is done out-of-band via `npm run auth:code`, so the bridge
+      // never needs a fast-cycling QR. Baileys' default qrTimeout (~20s
+      // after the first) churns the journal with fresh QRs when a session
+      // has dropped; widen it so a dropped session logs `qr_needed` once
+      // and waits quietly for the operator to re-pair.
+      qrTimeout: 10 * 60 * 1000,
+      connectTimeoutMs: 60 * 1000,
     });
     currentSock = sock;
     wireSocket(sock);
