@@ -82,16 +82,22 @@ def configure_logging(settings: Settings) -> None:
 
 
 def post_reply(
-    client: httpx.Client, bridge_url: str, token: str, message_id: str, reply: str
+    client: httpx.Client, bridge_url: str, token: str, to: str, reply: str
 ) -> None:
     """POST the orchestrator's reply to ``<bridge_url>/send``.
+
+    The bridge's ``/send`` contract is ``{to, text}`` where ``to`` is the
+    recipient's number (see ``wa-bridge/src/sender.ts`` ``SendRequestSchema``);
+    it has no ``message_id`` field and rejects a payload without ``to``. The
+    ``to`` here is the original sender's phone — we reply to whoever messaged
+    in. (``notify.py`` uses the same ``{to, text}`` shape.)
 
     Caller is expected to catch ``httpx.HTTPError`` and decide retry policy.
     """
     resp = client.post(
         f"{bridge_url.rstrip('/')}/send",
         headers={"Authorization": f"Bearer {token}"},
-        json={"message_id": message_id, "text": reply},
+        json={"to": to, "text": reply},
         timeout=10.0,
     )
     resp.raise_for_status()
@@ -143,7 +149,7 @@ def handle_message(
             client,
             str(settings.wa_bridge_url),
             settings.wa_bridge_token,
-            message_id,
+            sender,
             image_decision["ack"],
         )
         if not image_decision["routed"]:
@@ -168,7 +174,7 @@ def handle_message(
         client,
         str(settings.wa_bridge_url),
         settings.wa_bridge_token,
-        message_id,
+        sender,
         reply_text,
     )
     state.mark_processed(message_id)
@@ -187,9 +193,9 @@ def _dispatch_decision(
 ) -> str:
     """Dispatch a router decision to the right flow handler.
 
-    v1 handles ``faq`` and ``handoff`` directly. ``book_new`` / ``book_edit``
-    / ``book_cancel`` return a placeholder ("booking flow under construction")
-    — those will be implemented in #5 / #6 / #7 in the next batch.
+    ``faq`` → RAG answer; ``book_new`` / ``book_edit`` / ``book_cancel`` →
+    the booking-flow state machines (which call the booking CLI); ``handoff``
+    → escalate to a human + notify admins. All five are wired.
     """
     lang = language or decision.language or "en"
 

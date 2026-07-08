@@ -1,5 +1,5 @@
 .PHONY: help bridge-install bridge-dev bridge-build bridge-start bridge-test bridge-lint bridge-auth bridge-auth-code \
-        orch-venv orch-install orch-dev orch-test orch-lint \
+        orch-venv orch-install orch-install-rag orch-dev orch-test orch-lint \
         smoke smoke-live ingest-rules ingest-file \
         install-svc uninstall-svc restart status logs \
         snapshot-upstream issues clean
@@ -36,6 +36,18 @@ orch-venv: ## orchestrator: python3.11 -m venv .venv
 
 orch-install: ## orchestrator: pip install -e '.[dev]'
 	cd orchestrator && . .venv/bin/activate && pip install -U pip && pip install -e '.[dev]'
+
+# skill-rag-qdrant is the FAQ/RAG engine (imported as `rag_qdrant`). It is not
+# pip-installable, so we clone it and make it importable in the orchestrator
+# venv via a .pth file. Override RAG_QDRANT_DIR to relocate the clone.
+RAG_QDRANT_DIR ?= $(abspath ./skill-rag-qdrant)
+orch-install-rag: ## orchestrator: install the rag_qdrant engine (clone + deps + make importable)
+	@test -d "$(RAG_QDRANT_DIR)/.git" || git clone https://github.com/A-I-M-S/skill-rag-qdrant.git "$(RAG_QDRANT_DIR)"
+	cd orchestrator && . .venv/bin/activate && \
+		pip install -r "$(RAG_QDRANT_DIR)/requirements.txt" && \
+		echo "$(RAG_QDRANT_DIR)" > "$$(python -c 'import site; print(site.getsitepackages()[0])')/rag_qdrant.pth" && \
+		ADMIN_TELEGRAM_IDS=0 QDRANT_URL=x QDRANT_API_KEY=x INFERENCE_BASE_URL=x INFERENCE_API_KEY=x INFERENCE_MODEL=x \
+		python -c "import rag_qdrant; print('rag_qdrant importable:', rag_qdrant.__file__)"
 
 orch-dev: ## orchestrator: python -m src.main
 	cd orchestrator && . .venv/bin/activate && python -m src.main

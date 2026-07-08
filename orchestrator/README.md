@@ -50,6 +50,70 @@ From the repo root: `make orch-venv` then `make orch-install` then `make orch-de
 
 `make orch-test` (or `make test-cov` for coverage).
 
+## Wiring the two customer features (RAG + booking)
+
+The bot behind the WhatsApp number does exactly two things for customers —
+**answer FAQs (RAG)** and **book/edit/cancel farm tours** — plus a `handoff`
+safety net that escalates to a human and notifies admins when the LLM is unsure
+or a call fails. Both features are code-complete; making them work live needs
+the steps below. Fill env from the repo-root `.env.example` (single source of
+truth) into `.env` (dev) or `/etc/skill-chatbot.env` (prod).
+
+### 1. RAG / FAQ answering (`faq` tool)
+
+`src/rag.py` is a thin shim over the **`rag_qdrant`** engine
+([skill-rag-qdrant](https://github.com/A-I-M-S/skill-rag-qdrant), local
+FastEmbed embeddings — no embedding endpoint needed). It is not pip-installable,
+so install it into the orchestrator venv:
+
+```bash
+make orch-install-rag          # clones skill-rag-qdrant + installs deps + makes it importable
+```
+
+Required env: `QDRANT_URL`, `QDRANT_API_KEY`, `INFERENCE_BASE_URL`,
+`INFERENCE_API_KEY`, `INFERENCE_MODEL`, and **`ADMIN_TELEGRAM_IDS`** (the engine
+fail-closes at import if this is empty). Then create the collection and ingest
+the corpus (until you do, every FAQ answer is `"No relevant information found"`):
+
+```bash
+. .venv/bin/activate && python -m rag_qdrant init
+make ingest-file FILE=orchestrator/data/faq.md
+make ingest-rules                                  # booking_rules.yaml → Qdrant
+```
+
+### 2. Farm-tour booking (`book_new` / `book_edit` / `book_cancel`)
+
+The booking CLI (`booking_cli/booking_flow.py` + `composio_outlook.py`) is
+**vendored in this repo** and driven by `src/booking_subprocess.py` (runs it
+with the venv interpreter; no external skill required). It writes to an Outlook
+calendar via Composio. Required env: `COMPOSIO_API_KEY` (plus
+`COMPOSIO_CONNECTED_ACCOUNT_ID` / `COMPOSIO_ENTITY_ID` if more than one Outlook
+account is linked). Booking rules come from `BOOKING_RULES_PATH` — point it at
+`orchestrator/data/booking_rules.yaml` and **replace the placeholders**
+(`TODO_REAL_UEN`, capacity/pricing/hours) before quoting real customers.
+
+Dry-run without touching Composio (fails an early rule check):
+
+```bash
+BOOKING_RULES_PATH=$PWD/data/booking_rules.yaml \
+  python -c "from src import booking_subprocess as b; print(b.new_draft(date='2026-08-15', time='03:00', pax=10))"
+# → {'error': 'outside_hours', ...}  (proves the CLI + rules + arg contract work)
+```
+
+### 3. Replies reach the customer
+
+The orchestrator POSTs replies to the bridge `POST /send` as `{to, text}` where
+`to` is the sender's number (see `post_reply` in `src/main.py`; matches
+`wa-bridge` `SendRequestSchema`).
+
+### Go-live checklist
+
+1. Fill `/etc/skill-chatbot.env` from the root `.env.example` (all REQUIRED vars).
+2. `make orch-install-rag`; `python -m rag_qdrant init`; ingest `faq.md` + rules.
+3. Set Composio creds; fill real values in `booking_rules.yaml`.
+4. Start the orchestrator; send a real WhatsApp FAQ (expect a grounded answer)
+   and a booking (expect a confirmation + an Outlook event).
+
 ## Admin sub-app (issue #30)
 
 The orchestrator HTTP server (`ORCHESTRATOR_PORT`, default 7789) now

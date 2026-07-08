@@ -22,6 +22,11 @@ dependencies = [
     "pygtail>=0.14.0",
     "python-json-logger>=2.0.7",
     "ruamel.yaml>=0.18.0",
+    # Runtime deps of the vendored booking_cli/ (booking_flow.py imports
+    # yaml; composio_outlook uses requests). booking_flow runs under the
+    # orchestrator interpreter, so these must be in this environment.
+    "PyYAML>=6.0",
+    "requests>=2.32.0",
 ]
 
 [project.optional-dependencies]
